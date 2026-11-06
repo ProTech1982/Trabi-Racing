@@ -21,8 +21,11 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Android SDK einrichten
-        uses: android-actions/setup-android@v3
+      - name: Android SDK prüfen
+        run: |
+          test -d "$ANDROID_HOME" || { echo '::error::Android SDK fehlt auf dem Runner'; exit 1; }
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms" || true
 
       - name: Gradle einrichten
         uses: gradle/actions/setup-gradle@v4
