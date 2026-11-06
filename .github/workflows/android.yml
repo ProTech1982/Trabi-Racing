@@ -129,7 +129,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: Trabi Racing (Build ${{ github.run_number }}${{ steps.keystore.outputs.signed == 'true' && '' || ', DEBUG-signiert' }})
+          name: Trabi Racing (Build ${{ github.run_number }}, ${{ steps.keystore.outputs.signed == 'true' && 'signiert' || 'DEBUG' }})
           body: |
             Build ${{ github.run_number }}.
             Signierung: ${{ steps.keystore.outputs.signed == 'true' && 'Release-Keystore' || 'DEBUG - Keystore-Secrets stimmen nicht' }}
