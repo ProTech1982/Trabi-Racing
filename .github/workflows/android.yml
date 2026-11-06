@@ -36,6 +36,12 @@ jobs:
         run: |
           KS="$RUNNER_TEMP/trabi-racing.jks"
 
+          fallback() {
+            echo "::warning::$1 - es wird ersatzweise eine Debug-APK gebaut."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+
           if [ -z "$KEY_B64" ] || [ -z "$KEY_PASS" ] || [ -z "$KEY_PASSWORD" ]; then
             echo "::warning::Keystore-Secrets unvollstaendig - es wird eine Debug-APK gebaut."
             echo "signed=false" >> "$GITHUB_OUTPUT"
@@ -43,15 +49,14 @@ jobs:
           fi
 
           if ! printf '%s' "$KEY_B64" | tr -d '[:space:]' | base64 --decode > "$KS" 2>/tmp/b64.txt; then
-            echo "::error::ANDROID_KEYSTORE_BASE64 ist kein gueltiges Base64. Neu erzeugen mit: base64 -w 0 dein.jks"
             cat /tmp/b64.txt
-            exit 1
+            fallback "ANDROID_KEYSTORE_BASE64 ist kein gueltiges Base64 (neu erzeugen mit: base64 -w 0 dein.jks)"
           fi
 
           if ! keytool -J-Duser.language=en -list -keystore "$KS" -storepass "$KEY_PASS" > /tmp/ks.txt 2>&1; then
-            echo "::error::Keystore nicht lesbar. Meldung von keytool:"
+            echo "Meldung von keytool:"
             cat /tmp/ks.txt
-            exit 1
+            fallback "Keystore nicht lesbar - ANDROID_KEYSTORE_PASSWORD passt nicht"
           fi
 
           echo "Gefundene Schluessel im Keystore:"
@@ -61,8 +66,7 @@ jobs:
           if [ -z "$ALIAS" ] || ! grep -qi "^$ALIAS," /tmp/ks.txt; then
             DETECTED=$(grep -i 'PrivateKeyEntry' /tmp/ks.txt | head -1 | cut -d, -f1)
             if [ -z "$DETECTED" ]; then
-              echo "::error::Im Keystore ist gar kein privater Schluessel enthalten."
-              exit 1
+              fallback "Im Keystore ist kein privater Schluessel enthalten"
             fi
             echo "::warning::ANDROID_KEY_ALIAS ('$ALIAS') passt nicht - benutze stattdessen '$DETECTED'."
             ALIAS="$DETECTED"
@@ -70,9 +74,8 @@ jobs:
 
           if ! keytool -J-Duser.language=en -certreq -alias "$ALIAS" -keystore "$KS" \
                -storepass "$KEY_PASS" -keypass "$KEY_PASSWORD" > /dev/null 2>/tmp/kp.txt; then
-            echo "::error::ANDROID_KEY_PASSWORD passt nicht zum Schluessel '$ALIAS'. Meldung:"
             cat /tmp/kp.txt
-            exit 1
+            fallback "ANDROID_KEY_PASSWORD passt nicht zum Schluessel '$ALIAS'"
           fi
 
           echo "Keystore in Ordnung, Alias: $ALIAS"
@@ -113,9 +116,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: Trabi Racing (Build ${{ github.run_number }})
+          name: Trabi Racing (Build ${{ github.run_number }}${{ steps.keystore.outputs.signed == 'true' && '' || ', DEBUG-signiert' }})
           body: |
             Build ${{ github.run_number }}.
+            Signierung: ${{ steps.keystore.outputs.signed == 'true' && 'Release-Keystore' || 'DEBUG - Keystore-Secrets stimmen nicht' }}
 
             Aenderungen in diesem Build:
             ${{ steps.apk.outputs.changes }}
