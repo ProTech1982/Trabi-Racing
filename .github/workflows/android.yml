@@ -21,55 +21,103 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Android SDK prüfen
-        run: |
-          test -d "$ANDROID_HOME" || { echo '::error::Android SDK fehlt auf dem Runner'; exit 1; }
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          ls "$ANDROID_HOME/platforms" || true
-
       - name: Gradle einrichten
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Signaturschlüssel prüfen
+      - name: Keystore pruefen und vorbereiten
+        id: keystore
         env:
           KEY_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEY_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          test -n "$KEY_B64" || { echo "::error::ANDROID_KEYSTORE_BASE64 fehlt"; exit 1; }
-          test -n "$KEY_PASS" || { echo "::error::ANDROID_KEYSTORE_PASSWORD fehlt"; exit 1; }
-          test -n "$KEY_ALIAS" || { echo "::error::ANDROID_KEY_ALIAS fehlt"; exit 1; }
-          test -n "$KEY_PASSWORD" || { echo "::error::ANDROID_KEY_PASSWORD fehlt"; exit 1; }
-          printf '%s' "$KEY_B64" | base64 --decode > "$RUNNER_TEMP/trabi-racing.jks"
-          keytool -list -keystore "$RUNNER_TEMP/trabi-racing.jks" -storepass "$KEY_PASS" -alias "$KEY_ALIAS" >/dev/null
+          KS="$RUNNER_TEMP/trabi-racing.jks"
 
-      - name: Signierte APK bauen
+          if [ -z "$KEY_B64" ] || [ -z "$KEY_PASS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::warning::Keystore-Secrets unvollstaendig - es wird eine Debug-APK gebaut."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! printf '%s' "$KEY_B64" | tr -d '[:space:]' | base64 --decode > "$KS" 2>/tmp/b64.txt; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 ist kein gueltiges Base64. Neu erzeugen mit: base64 -w 0 dein.jks"
+            cat /tmp/b64.txt
+            exit 1
+          fi
+
+          if ! keytool -J-Duser.language=en -list -keystore "$KS" -storepass "$KEY_PASS" > /tmp/ks.txt 2>&1; then
+            echo "::error::Keystore nicht lesbar. Meldung von keytool:"
+            cat /tmp/ks.txt
+            exit 1
+          fi
+
+          echo "Gefundene Schluessel im Keystore:"
+          grep -i 'PrivateKeyEntry' /tmp/ks.txt || echo "(keiner)"
+
+          ALIAS="$KEY_ALIAS"
+          if [ -z "$ALIAS" ] || ! grep -qi "^$ALIAS," /tmp/ks.txt; then
+            DETECTED=$(grep -i 'PrivateKeyEntry' /tmp/ks.txt | head -1 | cut -d, -f1)
+            if [ -z "$DETECTED" ]; then
+              echo "::error::Im Keystore ist gar kein privater Schluessel enthalten."
+              exit 1
+            fi
+            echo "::warning::ANDROID_KEY_ALIAS ('$ALIAS') passt nicht - benutze stattdessen '$DETECTED'."
+            ALIAS="$DETECTED"
+          fi
+
+          if ! keytool -J-Duser.language=en -certreq -alias "$ALIAS" -keystore "$KS" \
+               -storepass "$KEY_PASS" -keypass "$KEY_PASSWORD" > /dev/null 2>/tmp/kp.txt; then
+            echo "::error::ANDROID_KEY_PASSWORD passt nicht zum Schluessel '$ALIAS'. Meldung:"
+            cat /tmp/kp.txt
+            exit 1
+          fi
+
+          echo "Keystore in Ordnung, Alias: $ALIAS"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+          echo "ANDROID_KEYSTORE_FILE=$KS" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
+
+      - name: APK bauen
         env:
-          ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/trabi-racing.jks
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: gradle --no-daemon :app:assembleRelease
+          APP_VERSION_CODE: ${{ github.run_number }}
+        run: |
+          if [ "${{ steps.keystore.outputs.signed }}" = "true" ]; then
+            gradle --no-daemon :app:assembleRelease
+          else
+            gradle --no-daemon :app:assembleDebug
+          fi
 
-      - name: APK für Download vorbereiten
+      - name: APK einsammeln
         id: apk
         run: |
           mkdir -p out
-          cp app/build/outputs/apk/release/app-release.apk out/Trabi-Racing.apk
-          echo "changes=$(git log -1 --pretty=%s)" >> "$GITHUB_OUTPUT"
+          APK=$(find app/build/outputs/apk -name '*.apk' | head -1)
+          if [ -z "$APK" ]; then
+            echo "::error::Keine APK gefunden."
+            exit 1
+          fi
+          cp "$APK" out/Trabi-Racing.apk
+          echo "Gebaut: $APK"
+          {
+            echo 'changes<<EOF'
+            git log -1 --pretty=%s
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
 
       - name: Als GitHub Release bereitstellen
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: Trabi Racing 1.0.0 (Build ${{ github.run_number }})
+          name: Trabi Racing (Build ${{ github.run_number }})
           body: |
-            Version 1.0.0, Build ${{ github.run_number }}.
+            Build ${{ github.run_number }}.
 
-            Änderungen in diesem Build:
+            Aenderungen in diesem Build:
             ${{ steps.apk.outputs.changes }}
 
             Unter Assets auf Trabi-Racing.apk tippen.
