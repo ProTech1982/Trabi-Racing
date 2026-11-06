@@ -34,12 +34,13 @@ public class MainActivity extends Activity implements GameView.Listener {
     private ScrollView menuLayer;
     private LinearLayout card;
     private TextView subtitle;
-    private Button btnResume, btnSave, btnLoad, btnClear, btnMusic;
+    private Button btnResume, btnSave, btnLoad, btnClear, btnMusic, btnSound, btnUpdate;
     private final Button[] limitButtons = new Button[3];
     private final int[] limitValues = {60, 120, 300};
 
     private Store store;
     private Chiptune music;
+    private Sfx sfx;
     private boolean gameStarted;
 
     @Override
@@ -50,12 +51,15 @@ public class MainActivity extends Activity implements GameView.Listener {
         store = new Store(this);
         music = new Chiptune();
         music.setEnabled(store.isMusicOn());
+        sfx = new Sfx();
+        sfx.setEnabled(store.isSoundOn());
 
         root = new FrameLayout(this);
         root.setBackgroundColor(BACKDROP);
 
         game = new GameView(this);
         game.setListener(this);
+        game.setSfx(sfx);
         root.addView(game, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
@@ -127,7 +131,7 @@ public class MainActivity extends Activity implements GameView.Listener {
 
         card.addView(buildLimitRow());
 
-        card.addView(menuButton("▶  Spiel starten", v -> startGame()));
+        card.addView(menuButton("▶  Neues Spiel", v -> startGame()));
         btnResume = menuButton("Weiterfahren", v -> resumeGame());
         card.addView(btnResume);
         btnSave = menuButton("Spiel speichern", v -> saveGame());
@@ -137,8 +141,12 @@ public class MainActivity extends Activity implements GameView.Listener {
         btnClear = menuButton("Spielstand löschen", v -> clearSave());
         card.addView(btnClear);
         card.addView(menuButton("Highscore – Top 10", v -> showHighscores()));
+        btnSound = menuButton(soundLabel(), v -> toggleSound());
+        card.addView(btnSound);
         btnMusic = menuButton(musicLabel(), v -> toggleMusic());
         card.addView(btnMusic);
+        btnUpdate = menuButton("Nach Updates suchen", v -> checkForUpdate());
+        card.addView(btnUpdate);
         card.addView(menuButton("Beenden", v -> finish()));
 
         holder.addView(card, new LinearLayout.LayoutParams(
@@ -224,11 +232,13 @@ public class MainActivity extends Activity implements GameView.Listener {
         menuLayer.setVisibility(View.VISIBLE);
         game.setPaused(true);
         music.stop();
+        sfx.stopEngine();
     }
 
     private void hideMenu() {
         menuLayer.setVisibility(View.GONE);
         if (store.isMusicOn()) music.start();
+        if (store.isSoundOn()) sfx.startEngine();
     }
 
     // ----------------------------------------------------------- Menuaktionen
@@ -276,6 +286,19 @@ public class MainActivity extends Activity implements GameView.Listener {
         btnMusic.setText(musicLabel());
     }
 
+    private void toggleSound() {
+        boolean on = !store.isSoundOn();
+        store.setSoundOn(on);
+        sfx.setEnabled(on);
+        if (!on) sfx.stopEngine();
+        else if (menuLayer.getVisibility() != View.VISIBLE) sfx.startEngine();
+        btnSound.setText(soundLabel());
+    }
+
+    private String soundLabel() {
+        return "Ton: " + (store.isSoundOn() ? "An" : "Aus");
+    }
+
     private String musicLabel() {
         return "Musik: " + (store.isMusicOn() ? "An" : "Aus");
     }
@@ -303,6 +326,45 @@ public class MainActivity extends Activity implements GameView.Listener {
                 .show();
     }
 
+    private void checkForUpdate() {
+        btnUpdate.setEnabled(false);
+        btnUpdate.setText("Suche läuft …");
+        Updater.check(this, result -> {
+            btnUpdate.setEnabled(true);
+            btnUpdate.setText("Nach Updates suchen");
+
+            if (result.error != null) {
+                new AlertDialog.Builder(this)
+                        .setTitle("Update-Prüfung")
+                        .setMessage(result.error)
+                        .setPositiveButton("Schließen", null)
+                        .show();
+                return;
+            }
+            if (!result.available) {
+                toast("Du hast bereits die neueste Version");
+                return;
+            }
+
+            String notes = result.notes == null ? "" : result.notes.trim();
+            if (notes.length() > 400) notes = notes.substring(0, 400) + " …";
+            new AlertDialog.Builder(this)
+                    .setTitle("Update verfügbar")
+                    .setMessage(result.version + (notes.isEmpty() ? "" : "\n\n" + notes))
+                    .setPositiveButton("Herunterladen", (d, which) -> {
+                        try {
+                            startActivity(new android.content.Intent(
+                                    android.content.Intent.ACTION_VIEW,
+                                    android.net.Uri.parse(result.downloadUrl)));
+                        } catch (Exception e) {
+                            toast("Download konnte nicht geöffnet werden");
+                        }
+                    })
+                    .setNegativeButton("Später", null)
+                    .show();
+        });
+    }
+
     private void toast(String msg) {
         android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_SHORT).show();
     }
@@ -321,6 +383,7 @@ public class MainActivity extends Activity implements GameView.Listener {
     @Override
     public void onGameOver(int score, int metres, boolean timeUp) {
         music.stop();
+        sfx.stopEngine();
         String head = timeUp ? "Zeit abgelaufen!" : "Zusammenstoß!";
         String body = String.format(java.util.Locale.GERMANY,
                 "%s%n%,d Punkte  ·  %d m", head, score, metres);
@@ -376,13 +439,15 @@ public class MainActivity extends Activity implements GameView.Listener {
         super.onPause();
         game.setPaused(true);
         music.stop();
+        sfx.stopEngine();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        if (menuLayer != null && menuLayer.getVisibility() != View.VISIBLE && store.isMusicOn()) {
-            music.start();
+        if (menuLayer != null && menuLayer.getVisibility() != View.VISIBLE) {
+            if (store.isMusicOn()) music.start();
+            if (store.isSoundOn()) sfx.startEngine();
         }
     }
 
@@ -390,5 +455,6 @@ public class MainActivity extends Activity implements GameView.Listener {
     protected void onDestroy() {
         super.onDestroy();
         music.stop();
+        sfx.release();
     }
 }

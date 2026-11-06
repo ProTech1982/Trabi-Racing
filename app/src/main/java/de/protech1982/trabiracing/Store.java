@@ -35,6 +35,14 @@ public class Store {
         prefs.edit().putBoolean("music", on).apply();
     }
 
+    public boolean isSoundOn() {
+        return prefs.getBoolean("sound", true);
+    }
+
+    public void setSoundOn(boolean on) {
+        prefs.edit().putBoolean("sound", on).apply();
+    }
+
     public int getLimitSeconds() {
         return prefs.getInt("limit", 120);
     }

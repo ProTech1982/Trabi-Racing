@@ -84,6 +84,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     private RectF btnRight = new RectF();
 
     private Listener listener;
+    private Sfx sfx;
 
     public GameView(Context ctx) {
         super(ctx);
@@ -96,6 +97,10 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
 
     public void setListener(Listener l) {
         listener = l;
+    }
+
+    public void setSfx(Sfx s) {
+        sfx = s;
     }
 
     // ---------------------------------------------------------------- Zustand
@@ -165,11 +170,17 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     }
 
     public void moveLeft() {
-        if (!paused && !over && lane > 0) lane--;
+        if (!paused && !over && lane > 0) {
+            lane--;
+            if (sfx != null) sfx.laneChange();
+        }
     }
 
     public void moveRight() {
-        if (!paused && !over && lane < LANES - 1) lane++;
+        if (!paused && !over && lane < LANES - 1) {
+            lane++;
+            if (sfx != null) sfx.laneChange();
+        }
     }
 
     // ------------------------------------------------------------ Oberflaeche
@@ -256,6 +267,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
 
         speed += dt * 0.055f;
         if (speed > 6.5f) speed = 6.5f;
+        if (sfx != null) sfx.setEngineSpeed(speed);
 
         float advance = speed * dt;
         metres += advance * 26f;
@@ -277,10 +289,12 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
                 if (o.lane == lane) {
                     shake = 1f;
                     flash = 1f;
+                    if (sfx != null) sfx.crash();
                     finish(false);
                     return;
                 }
                 scoreF += 60;
+                if (sfx != null) sfx.passed();
             }
             if (o.z < -0.05f) obstacles.remove(i);
         }
