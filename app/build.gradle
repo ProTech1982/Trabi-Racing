@@ -6,7 +6,7 @@ android {
         applicationId 'de.protech1982.trabiracing'
         minSdk 24
         targetSdk 35
-        versionCode (System.getenv('APP_VERSION_CODE') ?: '1') as Integer
+        versionCode = ((System.getenv('APP_VERSION_CODE') ?: '1') as String).toInteger()
         versionName '1.0.0'
     }
     signingConfigs {
