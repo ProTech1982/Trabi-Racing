@@ -8,6 +8,7 @@ direkt auf einer `SurfaceView` gezeichnet, die Chiptune-Musik per `AudioTrack` i
 - Antippen links/rechts oder die Pfeiltasten wechseln die Spur
 - Die Straße wird mit der Zeit immer schneller
 - Punkte für gefahrene Strecke und sauber passierte Hindernisse
+- Tacho unten mittig zeigt das virtuelle Tempo in km/h
 - Eine Kollision beendet die Fahrt, ebenso das gewählte Zeitlimit (1, 2 oder 5 Minuten)
 - Spielstand speichern/laden, Top-10-Bestenliste, Musik an/aus
 
@@ -19,6 +20,7 @@ direkt auf einer `SurfaceView` gezeichnet, die Chiptune-Musik per `AudioTrack` i
 | `Chiptune.java` | Melodie, Bass und Hi-Hat als PCM-Synthese |
 | `Sfx.java` | Motor und Effekte, getrennt schaltbar |
 | `Updater.java` | Versionsabgleich über die GitHub-Releases-API |
+| `Theme.java` | Farbpaletten der drei Designs |
 | `Store.java` | Einstellungen, Spielstand, Highscore |
 
 ## APK
@@ -56,6 +58,7 @@ umgesetzt in `Updater.java`:
 | Highscore – Top 10 | vorhanden |
 | Ton an/aus | vorhanden – getrennter Schalter für Effekte |
 | Musik an/aus | vorhanden (Chiptune) |
+| Design (Cyberpunk / DDR / Modern) | vorhanden |
 | Nach Updates suchen | vorhanden |
 | Zeitlimit 1 / 2 / 5 Minuten | vorhanden |
 | Beenden | vorhanden |
