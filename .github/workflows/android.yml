@@ -72,21 +72,34 @@ jobs:
             ALIAS="$DETECTED"
           fi
 
+          TYPE=$(grep -i '^Keystore type:' /tmp/ks.txt | awk '{print $NF}')
+          echo "Keystore-Typ: ${TYPE:-unbekannt}"
+
+          if [ "$TYPE" = "PKCS12" ] && [ "$KEY_PASSWORD" != "$KEY_PASS" ]; then
+            echo "::warning::PKCS12-Keystore - Schluessel- und Keystore-Passwort sind hier immer identisch. ANDROID_KEY_PASSWORD wird ignoriert."
+            KEY_PASSWORD="$KEY_PASS"
+          fi
+
           if ! keytool -J-Duser.language=en -certreq -alias "$ALIAS" -keystore "$KS" \
                -storepass "$KEY_PASS" -keypass "$KEY_PASSWORD" > /dev/null 2>/tmp/kp.txt; then
             cat /tmp/kp.txt
-            fallback "ANDROID_KEY_PASSWORD passt nicht zum Schluessel '$ALIAS'"
+            if [ "$KEY_PASSWORD" != "$KEY_PASS" ]; then
+              echo "::warning::ANDROID_KEY_PASSWORD passt nicht - versuche es mit dem Keystore-Passwort."
+              KEY_PASSWORD="$KEY_PASS"
+            else
+              fallback "Schluessel '$ALIAS' laesst sich nicht entsperren"
+            fi
           fi
 
           echo "Keystore in Ordnung, Alias: $ALIAS"
           echo "signed=true" >> "$GITHUB_OUTPUT"
           echo "ANDROID_KEYSTORE_FILE=$KS" >> "$GITHUB_ENV"
           echo "ANDROID_KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PASSWORD=$KEY_PASS" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
 
       - name: APK bauen
         env:
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           APP_VERSION_CODE: ${{ github.run_number }}
         run: |
           if [ "${{ steps.keystore.outputs.signed }}" = "true" ]; then
