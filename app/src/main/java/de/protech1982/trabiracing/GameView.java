@@ -228,7 +228,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
                 Canvas c = null;
                 try {
                     c = getHolder().lockCanvas();
-                    if (c != null) draw(c);
+                    if (c != null) drawFrame(c);
                 } finally {
                     if (c != null) getHolder().unlockCanvasAndPost(c);
                 }
@@ -352,7 +352,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
 
     // -------------------------------------------------------------- Zeichnung
 
-    private void draw(Canvas c) {
+    private void drawFrame(Canvas c) {
         c.save();
         if (shake > 0) {
             c.translate((rnd.nextFloat() - 0.5f) * 18f * shake,
