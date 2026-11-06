@@ -35,6 +35,14 @@ public class Store {
         prefs.edit().putBoolean("music", on).apply();
     }
 
+    public int getThemeId() {
+        return prefs.getInt("theme", 0);
+    }
+
+    public void setThemeId(int id) {
+        prefs.edit().putInt("theme", id).apply();
+    }
+
     public boolean isSoundOn() {
         return prefs.getBoolean("sound", true);
     }

@@ -34,7 +34,10 @@ public class MainActivity extends Activity implements GameView.Listener {
     private ScrollView menuLayer;
     private LinearLayout card;
     private TextView subtitle;
-    private Button btnResume, btnSave, btnLoad, btnClear, btnMusic, btnSound, btnUpdate;
+    private Button btnResume, btnSave, btnLoad, btnClear, btnMusic, btnSound, btnUpdate, btnDesign;
+    private final java.util.List<Button> menuButtons = new java.util.ArrayList<>();
+    private TextView title;
+    private Theme theme;
     private final Button[] limitButtons = new Button[3];
     private final int[] limitValues = {60, 120, 300};
 
@@ -49,6 +52,7 @@ public class MainActivity extends Activity implements GameView.Listener {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         store = new Store(this);
+        theme = Theme.of(store.getThemeId());
         music = new Chiptune();
         music.setEnabled(store.isMusicOn());
         sfx = new Sfx();
@@ -60,6 +64,7 @@ public class MainActivity extends Activity implements GameView.Listener {
         game = new GameView(this);
         game.setListener(this);
         game.setSfx(sfx);
+        game.setTheme(theme);
         root.addView(game, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
@@ -110,16 +115,16 @@ public class MainActivity extends Activity implements GameView.Listener {
         GradientDrawable cardBg = new GradientDrawable();
         cardBg.setColor(0xF2120C22);
         cardBg.setCornerRadius(dp(22));
-        cardBg.setStroke(dp(2), PINK);
+        cardBg.setStroke(dp(2), theme.accent2);
         card.setBackground(cardBg);
 
-        TextView title = new TextView(this);
+        title = new TextView(this);
         title.setText("Trabi Racing");
-        title.setTextColor(PINK);
+        title.setTextColor(theme.accent2);
         title.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD), Typeface.BOLD_ITALIC);
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 38);
         title.setGravity(Gravity.CENTER);
-        title.setShadowLayer(dp(10), 0, 0, PINK);
+        title.setShadowLayer(dp(10), 0, 0, theme.accent2);
         card.addView(title);
 
         subtitle = new TextView(this);
@@ -145,6 +150,8 @@ public class MainActivity extends Activity implements GameView.Listener {
         card.addView(btnSound);
         btnMusic = menuButton(musicLabel(), v -> toggleMusic());
         card.addView(btnMusic);
+        btnDesign = menuButton(designLabel(), v -> chooseDesign());
+        card.addView(btnDesign);
         btnUpdate = menuButton("Nach Updates suchen", v -> checkForUpdate());
         card.addView(btnUpdate);
         card.addView(menuButton("Beenden", v -> finish()));
@@ -213,9 +220,10 @@ public class MainActivity extends Activity implements GameView.Listener {
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(0x33121A2E);
         bg.setCornerRadius(dp(14));
-        bg.setStroke(dp(2), ACCENT);
+        bg.setStroke(dp(2), theme.accent);
         b.setBackground(bg);
         b.setOnClickListener(action);
+        menuButtons.add(b);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.setMargins(0, dp(5), 0, dp(5));
@@ -297,6 +305,44 @@ public class MainActivity extends Activity implements GameView.Listener {
 
     private String soundLabel() {
         return "Ton: " + (store.isSoundOn() ? "An" : "Aus");
+    }
+
+    private String designLabel() {
+        return "Design: " + theme.name;
+    }
+
+    private void chooseDesign() {
+        int current = store.getThemeId();
+        new AlertDialog.Builder(this)
+                .setTitle("Design wählen")
+                .setSingleChoiceItems(Theme.NAMES, current, (d, which) -> {
+                    store.setThemeId(which);
+                    theme = Theme.of(which);
+                    game.setTheme(theme);
+                    btnDesign.setText(designLabel());
+                    restyleMenu();
+                    d.dismiss();
+                })
+                .setNegativeButton("Abbrechen", null)
+                .show();
+    }
+
+    /** Menuefarben an das gewaehlte Design angleichen. */
+    private void restyleMenu() {
+        title.setTextColor(theme.accent2);
+        title.setShadowLayer(dp(10), 0, 0, theme.accent2);
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setColor(0xF2120C22);
+        cardBg.setCornerRadius(dp(22));
+        cardBg.setStroke(dp(2), theme.accent2);
+        card.setBackground(cardBg);
+        for (Button b : menuButtons) {
+            GradientDrawable bg = new GradientDrawable();
+            bg.setColor(0x33121A2E);
+            bg.setCornerRadius(dp(14));
+            bg.setStroke(dp(2), theme.accent);
+            b.setBackground(bg);
+        }
     }
 
     private String musicLabel() {

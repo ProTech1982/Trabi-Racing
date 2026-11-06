@@ -88,8 +88,13 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     private Sfx sfx;
 
     private BlurMaskFilter glowSoft, glowWide;
-    private LinearGradient carShader, sunShader, mirrorShader;
+    private LinearGradient sunShader, mirrorShader;
+    private LinearGradient carBodyShader, carRoundShader, carRoofShader, carGlassShader, carBumperShader;
     private float sunY, sunR;
+
+    private Theme theme = Theme.of(Theme.CYBERPUNK);
+    private float carW, carH;
+    private RectF tacho = new RectF();
 
     public GameView(Context ctx) {
         super(ctx);
@@ -106,6 +111,15 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
 
     public void setSfx(Sfx s) {
         sfx = s;
+    }
+
+    public void setTheme(Theme t) {
+        theme = t;
+        if (w > 0) buildShaders();
+    }
+
+    public Theme theme() {
+        return theme;
     }
 
     // ---------------------------------------------------------------- Zustand
@@ -205,39 +219,72 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         cx = w * 0.5f;
         roadHalf = w * 0.60f;
 
-        skyShader = new LinearGradient(0, 0, 0, horizon,
-                new int[]{0xFF1A0B2E, 0xFF4A1B5C, 0xFF8E2D62, 0xFFD94B7A},
-                new float[]{0f, 0.45f, 0.78f, 1f}, Shader.TileMode.CLAMP);
-        roadShader = new LinearGradient(0, horizon, 0, h,
-                new int[]{0xFF241A3A, 0xFF171229, 0xFF221B33},
-                new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP);
-
-        sunR = Math.min(w, h) * 0.20f;
-        sunY = horizon - sunR * 0.28f;
-        sunShader = new LinearGradient(0, sunY - sunR, 0, sunY + sunR,
-                new int[]{0xFFFFE08A, 0xFFFF7A5C, 0xFFFF3D8B, 0xFFB4268C},
-                new float[]{0f, 0.38f, 0.72f, 1f}, Shader.TileMode.CLAMP);
-
-        float carScale = scaleAt(CAR_Z) * 1.15f;
-        float carY = yAt(CAR_Z) - h * 0.045f;
-        float carBh = 150f * carScale;
-        carShader = new LinearGradient(0, carY - carBh * 0.42f, 0, carY + carBh * 0.06f,
-                new int[]{0xFFEAF8FF, 0xFFA9DCF0, 0xFF4E89A8},
-                new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP);
-
-        mirrorShader = new LinearGradient(0, horizon, 0, horizon + (h - horizon) * 0.35f,
-                0x44FF4D9D, 0x00FF4D9D, Shader.TileMode.CLAMP);
-
-        glowSoft = new BlurMaskFilter(Math.max(3f, Math.min(w, h) * 0.012f),
-                BlurMaskFilter.Blur.NORMAL);
-        glowWide = new BlurMaskFilter(Math.max(6f, Math.min(w, h) * 0.035f),
-                BlurMaskFilter.Blur.NORMAL);
-
         float bs = Math.min(w, h) * 0.13f;
         float pad = Math.min(w, h) * 0.035f;
         btnPause.set(pad, pad, pad + bs * 0.72f, pad + bs * 0.72f);
         btnLeft.set(pad, h - pad - bs, pad + bs * 1.25f, h - pad);
         btnRight.set(w - pad - bs * 1.25f, h - pad - bs, w - pad, h - pad);
+
+        float tr = Math.min(w, h) * 0.088f;
+        tacho.set(cx - tr, h - pad - tr * 2f, cx + tr, h - pad);
+
+        buildShaders();
+    }
+
+    /** Alle Farbverlaeufe neu aufbauen - nach Groessenwechsel und Designwechsel. */
+    private void buildShaders() {
+        skyShader = new LinearGradient(0, 0, 0, horizon, theme.sky,
+                new float[]{0f, 0.45f, 0.78f, 1f}, Shader.TileMode.CLAMP);
+        roadShader = new LinearGradient(0, horizon, 0, h, theme.road,
+                new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP);
+
+        sunR = Math.min(w, h) * 0.20f;
+        sunY = horizon - sunR * 0.28f;
+        sunShader = new LinearGradient(0, sunY - sunR, 0, sunY + sunR, theme.sun,
+                new float[]{0f, 0.38f, 0.72f, 1f}, Shader.TileMode.CLAMP);
+
+        mirrorShader = new LinearGradient(0, horizon, 0, horizon + (h - horizon) * 0.35f,
+                (theme.railRight & 0x00FFFFFF) | 0x44000000,
+                theme.railRight & 0x00FFFFFF, Shader.TileMode.CLAMP);
+
+        float sc = scaleAt(CAR_Z) * 1.15f;
+        carW = 300f * sc;
+        carH = 150f * sc;
+
+        float shoulder = -carH * 0.80f;
+        float bottom = -carH * 0.10f;
+        carBodyShader = new LinearGradient(0, shoulder, 0, bottom, theme.carBody,
+                new float[]{0f, 0.45f, 1f}, Shader.TileMode.CLAMP);
+        carRoundShader = new LinearGradient(-carW * 0.50f, 0, carW * 0.50f, 0,
+                new int[]{0x77000000, 0x00000000, 0x18FFFFFF, 0x00000000, 0x66000000},
+                new float[]{0f, 0.20f, 0.42f, 0.74f, 1f}, Shader.TileMode.CLAMP);
+        carRoofShader = new LinearGradient(0, -carH * 1.34f, 0, shoulder,
+                new int[]{lighten(theme.carRoof, 0.35f), theme.carRoof},
+                null, Shader.TileMode.CLAMP);
+        carGlassShader = new LinearGradient(0, -carH * 1.26f, 0, -carH * 0.86f,
+                new int[]{lighten(theme.carGlass, 0.45f), theme.carGlass, darken(theme.carGlass, 0.3f)},
+                new float[]{0f, 0.4f, 1f}, Shader.TileMode.CLAMP);
+        carBumperShader = new LinearGradient(0, -carH * 0.22f, 0, -carH * 0.02f,
+                new int[]{lighten(theme.carTrim, 0.4f), theme.carTrim, darken(theme.carTrim, 0.35f)},
+                new float[]{0f, 0.45f, 1f}, Shader.TileMode.CLAMP);
+
+        glowSoft = new BlurMaskFilter(Math.max(3f, Math.min(w, h) * 0.012f),
+                BlurMaskFilter.Blur.NORMAL);
+        glowWide = new BlurMaskFilter(Math.max(6f, Math.min(w, h) * 0.035f),
+                BlurMaskFilter.Blur.NORMAL);
+    }
+
+    private static int lighten(int colour, float amount) {
+        int r = (int) (Color.red(colour) + (255 - Color.red(colour)) * amount);
+        int g = (int) (Color.green(colour) + (255 - Color.green(colour)) * amount);
+        int b = (int) (Color.blue(colour) + (255 - Color.blue(colour)) * amount);
+        return Color.argb(Color.alpha(colour), r, g, b);
+    }
+
+    private static int darken(int colour, float amount) {
+        float k = 1f - amount;
+        return Color.argb(Color.alpha(colour), (int) (Color.red(colour) * k),
+                (int) (Color.green(colour) * k), (int) (Color.blue(colour) * k));
     }
 
     @Override
@@ -415,6 +462,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         }
 
         drawHud(c);
+        drawTacho(c);
         drawButtons(c);
     }
 
@@ -423,40 +471,43 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         c.drawRect(0, 0, w, horizon, p);
         p.setShader(null);
 
-        // Sternenfeld
-        long seed = 1337;
-        for (int i = 0; i < 46; i++) {
-            seed = seed * 6364136223846793005L + 1442695040888963407L;
-            float sx = ((seed >>> 33) % 10000) / 10000f * w;
-            seed = seed * 6364136223846793005L + 1442695040888963407L;
-            float sy = ((seed >>> 33) % 10000) / 10000f * horizon * 0.62f;
-            seed = seed * 6364136223846793005L + 1442695040888963407L;
-            int a = (int) (60 + ((seed >>> 33) % 140));
-            p.setColor(Color.argb(a, 255, 255, 255));
-            c.drawCircle(sx, sy, Math.max(1f, w * 0.0016f), p);
+        if (theme.stars) {
+            long seed = 1337;
+            for (int i = 0; i < 46; i++) {
+                seed = seed * 6364136223846793005L + 1442695040888963407L;
+                float sx = ((seed >>> 33) % 10000) / 10000f * w;
+                seed = seed * 6364136223846793005L + 1442695040888963407L;
+                float sy = ((seed >>> 33) % 10000) / 10000f * horizon * 0.62f;
+                seed = seed * 6364136223846793005L + 1442695040888963407L;
+                int a = (int) (60 + ((seed >>> 33) % 140));
+                p.setColor(Color.argb(a, 255, 255, 255));
+                c.drawCircle(sx, sy, Math.max(1f, w * 0.0016f), p);
+            }
         }
 
-        // Synthwave-Sonne mit Querstreifen
         float sx = w * 0.5f;
-        p.setShader(null);
-        p.setColor(0x33FF5C9E);
-        p.setMaskFilter(glowWide);
-        c.drawCircle(sx, sunY, sunR * 1.1f, p);
-        p.setMaskFilter(null);
+        if (theme.neon) {
+            p.setColor(0x33FF5C9E);
+            p.setMaskFilter(glowWide);
+            c.drawCircle(sx, sunY, sunR * 1.1f, p);
+            p.setMaskFilter(null);
+        }
 
         p.setShader(sunShader);
-        c.drawCircle(sx, sunY, sunR, p);
+        c.drawCircle(sx, sunY, sunR * (theme.sunBands ? 1f : 0.55f), p);
         p.setShader(null);
 
-        p.setColor(0xFF1A0B2E);
-        float band = sunR * 0.085f;
-        float y = sunY + sunR * 0.12f;
-        int n = 0;
-        while (y < sunY + sunR) {
-            float thick = band * (0.45f + n * 0.26f);
-            c.drawRect(sx - sunR, y, sx + sunR, y + thick, p);
-            y += thick + band * 0.78f;
-            n++;
+        if (theme.sunBands) {
+            p.setColor(theme.sky[0]);
+            float band = sunR * 0.085f;
+            float y = sunY + sunR * 0.12f;
+            int n = 0;
+            while (y < sunY + sunR) {
+                float thick = band * (0.45f + n * 0.26f);
+                c.drawRect(sx - sunR, y, sx + sunR, y + thick, p);
+                y += thick + band * 0.78f;
+                n++;
+            }
         }
     }
 
@@ -484,7 +535,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
 
         for (int pass = 0; pass < 2; pass++) {
             float depth = pass == 0 ? 0.55f : 1f;
-            int colour = pass == 0 ? 0xFF2A1140 : 0xFF190A2B;
+            int colour = pass == 0 ? theme.buildingFar : theme.buildingNear;
             float factor = pass == 0 ? 0.5f : 1f;
 
             for (Building b : skyline) {
@@ -500,7 +551,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
                 c.drawRect(left, top, left + bw, horizon, p);
 
                 if (pass == 1) {
-                    p.setColor(0xCC38E0F0);
+                    p.setColor(theme.window);
                     long s = b.seed;
                     float cell = Math.max(5f, bw / 5f);
                     for (float wy = top + cell; wy < horizon - cell; wy += cell * 1.9f) {
@@ -525,7 +576,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         float top = base - height;
 
         p.setShader(null);
-        p.setColor(0xFF140821);
+        p.setColor(darken(theme.buildingNear, 0.25f));
         path.reset();
         path.moveTo(tx - height * 0.040f, base);
         path.lineTo(tx - height * 0.016f, top + height * 0.30f);
@@ -537,10 +588,10 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         float ballY = top + height * 0.27f;
         float br = height * 0.065f;
         c.drawCircle(tx, ballY, br, p);
-        p.setColor(0x5538E0F0);
+        p.setColor((theme.accent & 0x00FFFFFF) | 0x55000000);
         c.drawCircle(tx, ballY, br * 0.55f, p);
 
-        p.setColor(0xFF140821);
+        p.setColor(darken(theme.buildingNear, 0.25f));
         c.drawRect(tx - height * 0.009f, top, tx + height * 0.009f, ballY, p);
         p.setColor(0xFFFF4D6D);
         c.drawCircle(tx, top + height * 0.012f, Math.max(2f, height * 0.011f), p);
@@ -548,13 +599,14 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
 
     private void drawRoad(Canvas c) {
         p.setShader(null);
-        p.setColor(0xFF0B0718);
+        p.setColor(theme.ground);
         c.drawRect(0, horizon, w, h, p);
 
-        // Neon-Widerschein des Himmels auf dem nassen Asphalt
-        p.setShader(mirrorShader);
-        c.drawRect(0, horizon, w, horizon + (h - horizon) * 0.35f, p);
-        p.setShader(null);
+        if (theme.neon) {
+            p.setShader(mirrorShader);
+            c.drawRect(0, horizon, w, horizon + (h - horizon) * 0.35f, p);
+            p.setShader(null);
+        }
 
         float yFar = yAt(1f), yNear = h;
         float hFar = halfAt(1f), hNear = halfAt(0f);
@@ -570,6 +622,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         p.setShader(null);
 
         // Gitterlinien quer zur Fahrtrichtung
+        if (theme.grid) {
         p.setStyle(Paint.Style.STROKE);
         for (int i = 0; i < 24; i++) {
             float z = ((i * 0.05f) - (dashOffset % 0.05f));
@@ -577,15 +630,17 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
             float sc = scaleAt(z);
             int alpha = (int) (95 * sc * 4f);
             if (alpha > 95) alpha = 95;
-            p.setColor(Color.argb(alpha, 86, 226, 255));
+            p.setColor(Color.argb(alpha, Color.red(theme.gridLine),
+                    Color.green(theme.gridLine), Color.blue(theme.gridLine)));
             p.setStrokeWidth(Math.max(1f, 3.2f * sc));
             float gy = yAt(z), gh = halfAt(z);
             c.drawLine(cx - gh, gy, cx + gh, gy, p);
         }
         p.setStyle(Paint.Style.FILL);
+        }
 
-        drawRail(c, -1, 0xFF31E7FF);
-        drawRail(c, 1, 0xFFFF4D9D);
+        drawRail(c, -1, theme.railLeft);
+        drawRail(c, 1, theme.railRight);
 
         // Fahrbahnmarkierungen zwischen den Spuren
         for (int d = 0; d < 2; d++) {
@@ -606,18 +661,20 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
                 path.lineTo(x2 + wdt2, yAt(z2));
                 path.lineTo(x2 - wdt2, yAt(z2));
                 path.close();
-                p.setColor(0x66B9F2FF);
-                p.setMaskFilter(glowSoft);
-                c.drawPath(path, p);
-                p.setMaskFilter(null);
-                p.setColor(0xFFF4F8FF);
+                if (theme.neon) {
+                    p.setColor((theme.dash & 0x00FFFFFF) | 0x66000000);
+                    p.setMaskFilter(glowSoft);
+                    c.drawPath(path, p);
+                    p.setMaskFilter(null);
+                }
+                p.setColor(theme.dash);
                 c.drawPath(path, p);
             }
         }
     }
 
     private void drawRail(Canvas c, int side, int colour) {
-        for (int pass = 0; pass < 2; pass++) {
+        for (int pass = theme.neon ? 0 : 1; pass < 2; pass++) {
             if (pass == 0) {
                 p.setColor(Color.argb(120, Color.red(colour), Color.green(colour), Color.blue(colour)));
                 p.setMaskFilter(glowWide);
@@ -645,6 +702,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         p.setMaskFilter(null);
 
         // Spiegelung auf der Fahrbahn
+        if (!theme.neon) return;
         p.setColor(Color.argb(40, Color.red(colour), Color.green(colour), Color.blue(colour)));
         path.reset();
         path.moveTo(cx + side * halfAt(1f) * 0.98f, yAt(1f));
@@ -666,10 +724,10 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
             if (size < 2f) continue;
 
             p.setShader(null);
-            p.setColor(0xFF120B20);
+            p.setColor(theme.trunk);
             c.drawRect(x - size * 0.07f, y - size * 0.55f, x + size * 0.07f, y, p);
 
-            p.setColor(t.kind == 0 ? 0xFF1C2E4A : (t.kind == 1 ? 0xFF22314F : 0xFF1A2742));
+            p.setColor(theme.tree[t.kind % 3]);
             if (t.kind == 2) {
                 path.reset();
                 path.moveTo(x, y - size * 1.5f);
@@ -741,106 +799,250 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     }
 
     private void drawCar(Canvas c) {
-        float s = scaleAt(CAR_Z) * 1.15f;
         float x = laneX(laneVisual, CAR_Z);
         float y = yAt(CAR_Z) - h * 0.045f;
-        float bw = 300f * s;
-        float bh = 150f * s;
-        float tilt = (laneVisual - lane) * 0.16f;
+        float bw = carW, bh = carH;
+        float tilt = (laneVisual - lane) * 0.20f;
 
         c.save();
-        c.rotate((float) Math.toDegrees(tilt), x, y);
+        c.translate(x, y);
+        c.rotate((float) Math.toDegrees(tilt));
         p.setShader(null);
+        p.setStyle(Paint.Style.FILL);
 
-        // Unterbodenbeleuchtung
-        p.setColor(0x88FF2E7E);
+        final float yRoof = -bh * 1.34f;
+        final float yShoulder = -bh * 0.80f;
+        final float yBottom = -bh * 0.10f;
+        final float hb = bw * 0.50f;
+        final float hs = bw * 0.465f;
+        final float hr = bw * 0.335f;
+
+        // Spiegelung auf nassem Asphalt
+        if (theme.neon) {
+            c.save();
+            c.scale(1f, -0.42f);
+            p.setColor((theme.carBody[1] & 0x00FFFFFF) | 0x33000000);
+            bodyPath(hb, hs, yShoulder, yBottom, bw);
+            c.drawPath(path, p);
+            c.restore();
+        }
+
+        // Weicher Bodenschatten
+        p.setColor(0x77000000);
         p.setMaskFilter(glowWide);
-        rect.set(x - bw * 0.50f, y + bh * 0.02f, x + bw * 0.50f, y + bh * 0.24f);
+        rect.set(-hb * 1.06f, -bh * 0.10f, hb * 1.06f, bh * 0.16f);
         c.drawOval(rect, p);
         p.setMaskFilter(null);
 
-        p.setColor(0x66000000);
-        rect.set(x - bw * 0.50f, y + bh * 0.06f, x + bw * 0.50f, y + bh * 0.26f);
-        c.drawOval(rect, p);
+        // Unterbodenlicht
+        if (theme.underglow != 0) {
+            p.setColor(theme.underglow);
+            p.setMaskFilter(glowWide);
+            rect.set(-hb * 0.94f, -bh * 0.04f, hb * 0.94f, bh * 0.14f);
+            c.drawOval(rect, p);
+            p.setMaskFilter(null);
+        }
+
+        // Raeder hinter der Karosserie
+        for (int side = -1; side <= 1; side += 2) {
+            float wx = side * hb * 0.99f;
+            p.setColor(0xFF0C0912);
+            rect.set(wx - bw * 0.055f, -bh * 0.40f, wx + bw * 0.055f, bh * 0.015f);
+            c.drawRoundRect(rect, bw * 0.02f, bw * 0.02f, p);
+            p.setColor(0x33FFFFFF);
+            c.drawRect(wx - bw * 0.055f, -bh * 0.34f, wx - bw * 0.030f, -bh * 0.05f, p);
+        }
 
         // Dach
-        p.setColor(0xFF8EC6DE);
+        p.setShader(carRoofShader);
         path.reset();
-        path.moveTo(x - bw * 0.33f, y - bh * 0.94f);
-        path.lineTo(x + bw * 0.33f, y - bh * 0.94f);
-        path.lineTo(x + bw * 0.40f, y - bh * 0.36f);
-        path.lineTo(x - bw * 0.40f, y - bh * 0.36f);
+        path.moveTo(-hr + bw * 0.03f, yRoof);
+        path.quadTo(-hr, yRoof, -hr - bw * 0.004f, yRoof + bh * 0.07f);
+        path.lineTo(-hs * 0.99f, yShoulder);
+        path.lineTo(hs * 0.99f, yShoulder);
+        path.lineTo(hr + bw * 0.004f, yRoof + bh * 0.07f);
+        path.quadTo(hr, yRoof, hr - bw * 0.03f, yRoof);
         path.close();
         c.drawPath(path, p);
-
-        // Heckscheibe
-        p.setColor(0xFF14243A);
-        path.reset();
-        path.moveTo(x - bw * 0.285f, y - bh * 0.88f);
-        path.lineTo(x + bw * 0.285f, y - bh * 0.88f);
-        path.lineTo(x + bw * 0.335f, y - bh * 0.46f);
-        path.lineTo(x - bw * 0.335f, y - bh * 0.46f);
-        path.close();
-        c.drawPath(path, p);
-        p.setColor(0x3349E8FF);
-        c.drawPath(path, p);
-
-        // Karosserie mit Verlauf
-        p.setShader(carShader);
-        rect.set(x - bw * 0.46f, y - bh * 0.42f, x + bw * 0.46f, y + bh * 0.06f);
-        c.drawRoundRect(rect, bw * 0.045f, bw * 0.045f, p);
         p.setShader(null);
 
-        // Neon-Kante entlang der Karosserie
+        // Heckscheibe mit Spiegelung
+        path.reset();
+        path.moveTo(-hr * 0.90f, yRoof + bh * 0.07f);
+        path.lineTo(hr * 0.90f, yRoof + bh * 0.07f);
+        path.lineTo(hs * 0.88f, yShoulder - bh * 0.045f);
+        path.lineTo(-hs * 0.88f, yShoulder - bh * 0.045f);
+        path.close();
+        p.setShader(carGlassShader);
+        c.drawPath(path, p);
+        p.setShader(null);
+
+        c.save();
+        c.clipPath(path);
+        p.setColor(0x33FFFFFF);
+        path.reset();
+        path.moveTo(-hs, yShoulder);
+        path.lineTo(-hs + bw * 0.18f, yShoulder);
+        path.lineTo(hr * 0.2f, yRoof);
+        path.lineTo(hr * 0.2f - bw * 0.18f, yRoof);
+        path.close();
+        c.drawPath(path, p);
+        c.restore();
+
+        // Karosserie mit Volumenverlauf
+        bodyPath(hb, hs, yShoulder, yBottom, bw);
+        p.setShader(carBodyShader);
+        c.drawPath(path, p);
+        p.setShader(carRoundShader);
+        c.drawPath(path, p);
+        p.setShader(null);
+
+        // Lichtkante auf der Schulter
         p.setStyle(Paint.Style.STROKE);
-        p.setStrokeWidth(Math.max(1.5f, bw * 0.012f));
-        p.setColor(0xCC49E8FF);
-        c.drawRoundRect(rect, bw * 0.045f, bw * 0.045f, p);
+        p.setStrokeWidth(Math.max(1.4f, bw * 0.009f));
+        p.setColor(0x99FFFFFF);
+        c.drawLine(-hs * 0.94f, yShoulder + bh * 0.012f, hs * 0.94f, yShoulder + bh * 0.012f, p);
+        if (theme.neon) {
+            p.setColor((theme.accent & 0x00FFFFFF) | 0xAA000000);
+            p.setStrokeWidth(Math.max(1.2f, bw * 0.008f));
+            bodyPath(hb, hs, yShoulder, yBottom, bw);
+            c.drawPath(path, p);
+        }
         p.setStyle(Paint.Style.FILL);
 
-        // Chrom-Stossstange
-        p.setColor(0xFFDCE9F0);
-        rect.set(x - bw * 0.48f, y + bh * 0.03f, x + bw * 0.48f, y + bh * 0.14f);
-        c.drawRoundRect(rect, bw * 0.02f, bw * 0.02f, p);
-        p.setColor(0x66FFFFFF);
-        c.drawRect(x - bw * 0.48f, y + bh * 0.045f, x + bw * 0.48f, y + bh * 0.07f, p);
+        // Sicke quer ueber die Heckklappe
+        p.setColor(0x22000000);
+        c.drawRect(-hs * 0.9f, -bh * 0.52f, hs * 0.9f, -bh * 0.50f, p);
 
-        // Rueckleuchten mit Schein
+        // Rueckleuchten
         for (int side = -1; side <= 1; side += 2) {
-            float lx = x + side * bw * 0.385f;
-            p.setColor(0xAAFF2E4E);
-            p.setMaskFilter(glowSoft);
-            rect.set(lx - bw * 0.075f, y - bh * 0.36f, lx + bw * 0.075f, y - bh * 0.06f);
-            c.drawRoundRect(rect, bw * 0.02f, bw * 0.02f, p);
-            p.setMaskFilter(null);
-            p.setColor(0xFFFF5566);
-            rect.set(lx - bw * 0.055f, y - bh * 0.34f, lx + bw * 0.055f, y - bh * 0.08f);
-            c.drawRoundRect(rect, bw * 0.015f, bw * 0.015f, p);
-            p.setColor(0xFFFFC9CF);
-            c.drawRect(lx - bw * 0.03f, y - bh * 0.30f, lx + bw * 0.03f, y - bh * 0.14f, p);
+            float lx = side * bw * 0.385f;
+            if (theme.neon) {
+                p.setColor((theme.tailLight & 0x00FFFFFF) | 0xAA000000);
+                p.setMaskFilter(glowSoft);
+                rect.set(lx - bw * 0.075f, -bh * 0.66f, lx + bw * 0.075f, -bh * 0.22f);
+                c.drawRoundRect(rect, bw * 0.02f, bw * 0.02f, p);
+                p.setMaskFilter(null);
+            }
+            p.setColor(darken(theme.tailLight, 0.45f));
+            rect.set(lx - bw * 0.060f, -bh * 0.64f, lx + bw * 0.060f, -bh * 0.24f);
+            c.drawRoundRect(rect, bw * 0.016f, bw * 0.016f, p);
+            p.setColor(theme.tailLight);
+            rect.set(lx - bw * 0.048f, -bh * 0.62f, lx + bw * 0.048f, -bh * 0.26f);
+            c.drawRoundRect(rect, bw * 0.014f, bw * 0.014f, p);
+            p.setColor(0xCCFFFFFF);
+            c.drawRect(lx - bw * 0.022f, -bh * 0.56f, lx + bw * 0.022f, -bh * 0.38f, p);
         }
 
         // Kennzeichen
         p.setColor(0xFFF6F6F8);
-        rect.set(x - bw * 0.20f, y - bh * 0.28f, x + bw * 0.20f, y - bh * 0.08f);
+        rect.set(-bw * 0.20f, -bh * 0.56f, bw * 0.20f, -bh * 0.36f);
         c.drawRoundRect(rect, bw * 0.015f, bw * 0.015f, p);
+        p.setColor(0x22000000);
+        c.drawRect(-bw * 0.20f, -bh * 0.56f, bw * 0.20f, -bh * 0.545f, p);
         textPaint.setColor(0xFF15151F);
         textPaint.setTextAlign(Paint.Align.CENTER);
-        textPaint.setTextSize(bh * 0.165f);
-        c.drawText("DDR  TR 601", x, y - bh * 0.125f, textPaint);
+        textPaint.setTextSize(bh * 0.155f);
+        c.drawText("DDR  TR 601", 0, -bh * 0.41f, textPaint);
 
-        // Raeder
-        p.setColor(0xFF100C18);
-        c.drawRect(x - bw * 0.505f, y - bh * 0.18f, x - bw * 0.43f, y + bh * 0.08f, p);
-        c.drawRect(x + bw * 0.43f, y - bh * 0.18f, x + bw * 0.505f, y + bh * 0.08f, p);
+        // Stossstange mit Glanzkante
+        p.setShader(carBumperShader);
+        rect.set(-hb * 1.01f, -bh * 0.24f, hb * 1.01f, -bh * 0.04f);
+        c.drawRoundRect(rect, bw * 0.022f, bw * 0.022f, p);
+        p.setShader(null);
+        p.setColor(0x88FFFFFF);
+        c.drawRect(-hb * 0.99f, -bh * 0.21f, hb * 0.99f, -bh * 0.19f, p);
 
-        // Auspuffglimmen
-        p.setColor(0x9949E8FF);
+        // Verschattung unter dem Wagen
+        p.setColor(0x88000000);
         p.setMaskFilter(glowSoft);
-        c.drawCircle(x - bw * 0.30f, y + bh * 0.15f, bw * 0.03f, p);
+        rect.set(-hb * 0.92f, -bh * 0.06f, hb * 0.92f, bh * 0.05f);
+        c.drawOval(rect, p);
         p.setMaskFilter(null);
 
+        // Auspuff
+        if (theme.neon) {
+            p.setColor((theme.accent & 0x00FFFFFF) | 0x99000000);
+            p.setMaskFilter(glowSoft);
+            c.drawCircle(-bw * 0.30f, -bh * 0.02f, bw * 0.03f, p);
+            p.setMaskFilter(null);
+        }
+
         c.restore();
+    }
+
+    /** Umriss der Karosserie, leicht nach oben verjuengt und mit runden Ecken. */
+    private void bodyPath(float hb, float hs, float yShoulder, float yBottom, float bw) {
+        float r = bw * 0.05f;
+        path.reset();
+        path.moveTo(-hb, yBottom - r);
+        path.lineTo(-hs, yShoulder + r);
+        path.quadTo(-hs, yShoulder, -hs + r, yShoulder);
+        path.lineTo(hs - r, yShoulder);
+        path.quadTo(hs, yShoulder, hs, yShoulder + r);
+        path.lineTo(hb, yBottom - r);
+        path.quadTo(hb, yBottom, hb - r, yBottom);
+        path.lineTo(-hb + r, yBottom);
+        path.quadTo(-hb, yBottom, -hb, yBottom - r);
+        path.close();
+    }
+
+    /** Analoger Tacho mit Zeiger und Zahlenwert. */
+    private void drawTacho(Canvas c) {
+        float cxT = tacho.centerX(), cyT = tacho.centerY();
+        float r = tacho.width() * 0.5f;
+        float kmh = speed * 17.5f;
+        float frac = Math.min(1f, kmh / 120f);
+
+        p.setShader(null);
+        p.setStyle(Paint.Style.FILL);
+        p.setColor(0xAA0C0818);
+        c.drawCircle(cxT, cyT, r, p);
+
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(r * 0.09f);
+        p.setColor(0x33FFFFFF);
+        rect.set(cxT - r * 0.80f, cyT - r * 0.80f, cxT + r * 0.80f, cyT + r * 0.80f);
+        c.drawArc(rect, 135f, 270f, false, p);
+
+        if (theme.neon) {
+            p.setColor((theme.accent2 & 0x00FFFFFF) | 0x88000000);
+            p.setMaskFilter(glowSoft);
+            c.drawArc(rect, 135f, 270f * frac, false, p);
+            p.setMaskFilter(null);
+        }
+        p.setColor(theme.accent2);
+        c.drawArc(rect, 135f, 270f * frac, false, p);
+
+        // Skalenstriche
+        p.setStrokeWidth(Math.max(1.2f, r * 0.035f));
+        for (int i = 0; i <= 6; i++) {
+            double ang = Math.toRadians(135 + 270.0 * i / 6.0);
+            float ox = (float) Math.cos(ang), oy = (float) Math.sin(ang);
+            p.setColor(i >= 5 ? theme.tailLight : 0x88FFFFFF);
+            c.drawLine(cxT + ox * r * 0.60f, cyT + oy * r * 0.60f,
+                    cxT + ox * r * 0.70f, cyT + oy * r * 0.70f, p);
+        }
+
+        // Zeiger
+        double na = Math.toRadians(135 + 270.0 * frac);
+        p.setStrokeWidth(Math.max(2f, r * 0.055f));
+        p.setColor(theme.tailLight);
+        c.drawLine(cxT - (float) Math.cos(na) * r * 0.12f,
+                cyT - (float) Math.sin(na) * r * 0.12f,
+                cxT + (float) Math.cos(na) * r * 0.62f,
+                cyT + (float) Math.sin(na) * r * 0.62f, p);
+        p.setStyle(Paint.Style.FILL);
+        p.setColor(0xFFE8E8F0);
+        c.drawCircle(cxT, cyT, r * 0.07f, p);
+
+        textPaint.setTextAlign(Paint.Align.CENTER);
+        textPaint.setColor(theme.hudText);
+        textPaint.setTextSize(r * 0.44f);
+        c.drawText(String.valueOf((int) kmh), cxT, cyT + r * 0.46f, textPaint);
+        textPaint.setColor(0xAAFFFFFF);
+        textPaint.setTextSize(r * 0.20f);
+        c.drawText("km/h", cxT, cyT + r * 0.68f, textPaint);
     }
 
     private void drawHud(Canvas c) {
@@ -852,9 +1054,9 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         float right = w - pad;
         float y = pad + size;
 
-        hudLine(c, "Punkte", formatScore((int) scoreF), right, y, 0xFFFFC24D);
+        hudLine(c, "Punkte", formatScore((int) scoreF), right, y, theme.hudText);
         y += size * 1.35f;
-        hudLine(c, "Zeit", formatTime(timeLeft) + " / " + formatTime(limit), right, y, 0xFF49E8FF);
+        hudLine(c, "Zeit", formatTime(timeLeft) + " / " + formatTime(limit), right, y, theme.accent);
         y += size * 1.35f;
         hudLine(c, "Strecke", (int) metres + " m", right, y, 0xFFFFFFFF);
     }
@@ -869,15 +1071,15 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     }
 
     private void drawButtons(Canvas c) {
-        drawGlassButton(c, btnPause, 0xFF49E8FF);
+        drawGlassButton(c, btnPause, theme.accent);
         p.setColor(0xFFEAF6FF);
         float bx = btnPause.centerX(), by = btnPause.centerY();
         float bw = btnPause.width() * 0.13f, bh = btnPause.height() * 0.3f;
         c.drawRect(bx - bw * 2.1f, by - bh, bx - bw * 0.3f, by + bh, p);
         c.drawRect(bx + bw * 0.3f, by - bh, bx + bw * 2.1f, by + bh, p);
 
-        drawGlassButton(c, btnLeft, 0xFF49E8FF);
-        drawGlassButton(c, btnRight, 0xFF49E8FF);
+        drawGlassButton(c, btnLeft, theme.accent);
+        drawGlassButton(c, btnRight, theme.accent);
         p.setColor(0xFFEAF6FF);
         arrow(c, btnLeft, -1);
         arrow(c, btnRight, 1);
