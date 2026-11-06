@@ -29,3 +29,40 @@ Repository-Secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
 Bei PKCS12-Keystores sind Keystore- und Schlüsselpasswort identisch.
 Immer denselben Keystore behalten, sonst lassen sich Updates nicht über eine
 bereits installierte Version legen. Der `versionCode` kommt aus der Build-Nummer.
+
+## Offene Anforderungen
+
+Festgehalten als Arbeitsliste für die nächsten Ausbaustufen.
+
+### Update-Funktion
+Nach dem Vorbild von `ProTech1982/meine-termine` und `ProTech1982/unsere-tage`:
+
+- Menüpunkt **„Nach Updates suchen"** sowie optional eine stille Prüfung beim App-Start
+- Abfrage der öffentlichen GitHub-Releases-API dieses Repositories
+- Vergleich der installierten Version (`versionCode` / `versionName`) mit dem neuesten Release
+- Bei neuerer Version: Hinweis mit Änderungstext und Download des APK-Assets
+- Voraussetzungen: `INTERNET`-Berechtigung wieder aufnehmen (wurde beim Umbau entfernt),
+  Repository muss öffentlich bleiben
+- **Kein** GitHub-Token in der APK einbetten
+
+### Menüstruktur
+Soll-Zustand des Hauptmenüs:
+
+| Punkt | Status |
+|---|---|
+| Neues Spiel | vorhanden, heißt derzeit „Spiel starten" |
+| Weiterfahren | vorhanden (nur bei laufender Partie) |
+| Spiel speichern | vorhanden |
+| Spiel laden | vorhanden |
+| Spielstand löschen | vorhanden |
+| Highscore – Top 10 | vorhanden |
+| **Ton an/aus** | **fehlt** – getrennter Schalter für Effekte |
+| Musik an/aus | vorhanden (Chiptune) |
+| Nach Updates suchen | fehlt |
+| Zeitlimit 1 / 2 / 5 Minuten | vorhanden |
+| Beenden | vorhanden |
+
+### Ton getrennt von Musik
+`Ton an/aus` soll nur die Effekte schalten, `Musik an/aus` nur die Chiptune-Melodie.
+Beide Schalter werden in `Store` getrennt abgelegt. Noch zu ergänzende Effekte:
+Motorgeräusch, Spurwechsel, sauber passiertes Hindernis, Kollision.
