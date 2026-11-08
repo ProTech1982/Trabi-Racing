@@ -61,9 +61,16 @@ umgesetzt in `Updater.java`:
 | Design (Cyberpunk / DDR / Modern) | vorhanden |
 | Nach Updates suchen | vorhanden |
 | Zeitlimit 1 / 2 / 5 Minuten | vorhanden |
+| Schwierigkeit Einfach / Mittel / Schwer / Sehr schwer | vorhanden (`Difficulty.java`) |
 | Beenden | vorhanden |
 
 ### Ton getrennt von Musik
 `Ton an/aus` schaltet nur die Effekte, `Musik an/aus` nur die Chiptune-Melodie;
 beide Schalter liegen getrennt im `Store`. Effekte in `Sfx.java`: Motorbrummen
 (Tonhöhe steigt mit dem Tempo), Spurwechsel, sauber passiertes Hindernis, Kollision.
+
+### Schwierigkeitsstufen
+Stufe bestimmt Starttempo, Beschleunigung, Höchsttempo und Hindernisdichte
+(`Difficulty.java`). Punkte werden mit ×1 / ×1,5 / ×2 / ×3 multipliziert; die
+Top 10 ist gemeinsam für alle Stufen, jeder Eintrag zeigt seine Stufe. Der Tacho
+reicht bis 180 km/h. Die Werte sind Startwerte und werden am Gerät feingetunt.

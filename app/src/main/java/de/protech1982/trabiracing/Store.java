@@ -13,10 +13,13 @@ public class Store {
     public static class Entry {
         public final String name;
         public final int score;
+        /** Schwierigkeitsstufe oder -1 bei alten Eintraegen. */
+        public final int level;
 
-        Entry(String name, int score) {
+        Entry(String name, int score, int level) {
             this.name = name;
             this.score = score;
+            this.level = level;
         }
     }
 
@@ -59,17 +62,26 @@ public class Store {
         prefs.edit().putInt("limit", seconds).apply();
     }
 
+    public int getDifficulty() {
+        return Difficulty.clamp(prefs.getInt("difficulty", Difficulty.MEDIUM));
+    }
+
+    public void setDifficulty(int level) {
+        prefs.edit().putInt("difficulty", Difficulty.clamp(level)).apply();
+    }
+
     public boolean hasSave() {
         return prefs.contains("save_score");
     }
 
-    public void save(int score, float metres, float secondsLeft, int lane, float speed) {
+    public void save(int score, float metres, float secondsLeft, int lane, float speed, int level) {
         prefs.edit()
                 .putInt("save_score", score)
                 .putFloat("save_metres", metres)
                 .putFloat("save_left", secondsLeft)
                 .putInt("save_lane", lane)
                 .putFloat("save_speed", speed)
+                .putInt("save_diff", level)
                 .apply();
     }
 
@@ -80,14 +92,15 @@ public class Store {
                 prefs.getFloat("save_metres", 0f),
                 prefs.getFloat("save_left", 120f),
                 prefs.getInt("save_lane", 1),
-                prefs.getFloat("save_speed", 1f)
+                prefs.getFloat("save_speed", 1f),
+                prefs.getInt("save_diff", Difficulty.MEDIUM)
         };
     }
 
     public void clearSave() {
         prefs.edit()
                 .remove("save_score").remove("save_metres").remove("save_left")
-                .remove("save_lane").remove("save_speed")
+                .remove("save_lane").remove("save_speed").remove("save_diff")
                 .apply();
     }
 
@@ -96,15 +109,16 @@ public class Store {
         for (int i = 0; i < 10; i++) {
             int score = prefs.getInt("hs_score_" + i, 0);
             if (score <= 0) continue;
-            list.add(new Entry(prefs.getString("hs_name_" + i, "Trabifahrer"), score));
+            list.add(new Entry(prefs.getString("hs_name_" + i, "Trabifahrer"), score,
+                    prefs.getInt("hs_diff_" + i, -1)));
         }
         return list;
     }
 
     /** Traegt einen Punktestand ein und meldet den Platz (1..10) oder 0. */
-    public int addHighscore(String name, int score) {
+    public int addHighscore(String name, int score, int level) {
         List<Entry> list = highscores();
-        list.add(new Entry(name, score));
+        list.add(new Entry(name, score, level));
         Collections.sort(list, (a, b) -> Integer.compare(b.score, a.score));
         while (list.size() > 10) list.remove(list.size() - 1);
 
@@ -113,14 +127,16 @@ public class Store {
             if (i < list.size()) {
                 e.putString("hs_name_" + i, list.get(i).name);
                 e.putInt("hs_score_" + i, list.get(i).score);
+                e.putInt("hs_diff_" + i, list.get(i).level);
             } else {
-                e.remove("hs_name_" + i).remove("hs_score_" + i);
+                e.remove("hs_name_" + i).remove("hs_score_" + i).remove("hs_diff_" + i);
             }
         }
         e.apply();
 
         for (int i = 0; i < list.size(); i++) {
-            if (list.get(i).score == score && list.get(i).name.equals(name)) return i + 1;
+            if (list.get(i).score == score && list.get(i).level == level
+                    && list.get(i).name.equals(name)) return i + 1;
         }
         return 0;
     }

@@ -34,7 +34,7 @@ public class MainActivity extends Activity implements GameView.Listener {
     private ScrollView menuLayer;
     private LinearLayout card;
     private TextView subtitle;
-    private Button btnResume, btnSave, btnLoad, btnClear, btnMusic, btnSound, btnUpdate, btnDesign;
+    private Button btnResume, btnSave, btnLoad, btnClear, btnMusic, btnSound, btnUpdate, btnDesign, btnLevel;
     private final java.util.List<Button> menuButtons = new java.util.ArrayList<>();
     private TextView title;
     private Theme theme;
@@ -135,6 +135,8 @@ public class MainActivity extends Activity implements GameView.Listener {
         card.addView(subtitle);
 
         card.addView(buildLimitRow());
+        btnLevel = menuButton(levelLabel(), v -> chooseLevel());
+        card.addView(btnLevel);
 
         card.addView(menuButton("▶  Neues Spiel", v -> startGame()));
         btnResume = menuButton("Weiterfahren", v -> resumeGame());
@@ -252,7 +254,7 @@ public class MainActivity extends Activity implements GameView.Listener {
     // ----------------------------------------------------------- Menuaktionen
 
     private void startGame() {
-        game.newGame(store.getLimitSeconds());
+        game.newGame(store.getLimitSeconds(), store.getDifficulty());
         gameStarted = true;
         hideMenu();
     }
@@ -267,7 +269,8 @@ public class MainActivity extends Activity implements GameView.Listener {
     }
 
     private void saveGame() {
-        store.save(game.score(), game.metres(), game.timeLeft(), game.lane(), game.speed());
+        store.save(game.score(), game.metres(), game.timeLeft(), game.lane(), game.speed(),
+                game.difficulty());
         toast("Spielstand gespeichert");
         showMenu("Gespeichert");
     }
@@ -275,7 +278,7 @@ public class MainActivity extends Activity implements GameView.Listener {
     private void loadGame() {
         float[] s = store.load();
         if (s == null) return;
-        game.restore((int) s[0], s[1], s[2], (int) s[3], s[4], store.getLimitSeconds());
+        game.restore((int) s[0], s[1], s[2], (int) s[3], s[4], store.getLimitSeconds(), (int) s[5]);
         gameStarted = true;
         showMenu("Spielstand geladen – weiterfahren?");
     }
@@ -305,6 +308,27 @@ public class MainActivity extends Activity implements GameView.Listener {
 
     private String soundLabel() {
         return "Ton: " + (store.isSoundOn() ? "An" : "Aus");
+    }
+
+    private String levelLabel() {
+        int l = store.getDifficulty();
+        return "Stufe: " + Difficulty.label(l) + " (" + Difficulty.multiplierText(l) + " Punkte)";
+    }
+
+    private void chooseLevel() {
+        String[] items = new String[Difficulty.COUNT];
+        for (int i = 0; i < items.length; i++) {
+            items[i] = Difficulty.NAMES[i] + "  (" + Difficulty.multiplierText(i) + " Punkte)";
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Schwierigkeit wählen")
+                .setSingleChoiceItems(items, store.getDifficulty(), (d, which) -> {
+                    store.setDifficulty(which);
+                    btnLevel.setText(levelLabel());
+                    d.dismiss();
+                })
+                .setNegativeButton("Abbrechen", null)
+                .show();
     }
 
     private String designLabel() {
@@ -356,8 +380,10 @@ public class MainActivity extends Activity implements GameView.Listener {
             sb.append("Noch keine Einträge.\nFahr eine Runde!");
         } else {
             for (int i = 0; i < list.size(); i++) {
-                sb.append(String.format(java.util.Locale.GERMANY, "%2d.  %-14s %,d%n",
-                        i + 1, list.get(i).name, list.get(i).score));
+                Store.Entry e = list.get(i);
+                String lv = e.level < 0 ? "" : Difficulty.label(e.level);
+                sb.append(String.format(java.util.Locale.GERMANY, "%2d.  %-12s %,8d  %s%n",
+                        i + 1, e.name, e.score, lv));
             }
         }
         TextView tv = new TextView(this);
@@ -430,9 +456,10 @@ public class MainActivity extends Activity implements GameView.Listener {
     public void onGameOver(int score, int metres, boolean timeUp) {
         music.stop();
         sfx.stopEngine();
+        final int level = game.difficulty();
         String head = timeUp ? "Zeit abgelaufen!" : "Zusammenstoß!";
         String body = String.format(java.util.Locale.GERMANY,
-                "%s%n%,d Punkte  ·  %d m", head, score, metres);
+                "%s%n%,d Punkte  ·  %d m  ·  %s", head, score, metres, Difficulty.label(game.difficulty()));
 
         List<Store.Entry> list = store.highscores();
         boolean top = list.size() < 10 || score > list.get(list.size() - 1).score;
@@ -450,7 +477,7 @@ public class MainActivity extends Activity implements GameView.Listener {
                     .setPositiveButton("Eintragen", (d, which) -> {
                         String name = input.getText().toString().trim();
                         if (name.isEmpty()) name = "Trabifahrer";
-                        store.addHighscore(name, score);
+                        store.addHighscore(name, score, level);
                         gameStarted = false;
                         showMenu("Hauptmenü");
                     })

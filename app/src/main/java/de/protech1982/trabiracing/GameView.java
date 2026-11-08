@@ -71,6 +71,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     private int lane = 1;
     private float laneVisual = 1f;
     private float speed = 1f;
+    private int difficulty = Difficulty.MEDIUM;
     private float metres;
     private float scoreF;
     private float timeLeft = 120f;
@@ -124,12 +125,13 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
 
     // ---------------------------------------------------------------- Zustand
 
-    public void newGame(float limitSeconds) {
+    public void newGame(float limitSeconds, int level) {
+        difficulty = Difficulty.clamp(level);
         limit = limitSeconds;
         timeLeft = limitSeconds;
         lane = 1;
         laneVisual = 1f;
-        speed = 1f;
+        speed = Difficulty.START_SPEED[difficulty];
         metres = 0;
         scoreF = 0;
         shake = 0;
@@ -141,14 +143,14 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         paused = false;
     }
 
-    public void restore(int score, float metresDone, float left, int savedLane, float savedSpeed, float limitSeconds) {
-        newGame(limitSeconds);
+    public void restore(int score, float metresDone, float left, int savedLane, float savedSpeed, float limitSeconds, int level) {
+        newGame(limitSeconds, level);
         scoreF = score;
         metres = metresDone;
         timeLeft = left;
         lane = Math.max(0, Math.min(LANES - 1, savedLane));
         laneVisual = lane;
-        speed = Math.max(1f, savedSpeed);
+        speed = Math.max(Difficulty.START_SPEED[difficulty], savedSpeed);
         paused = true;
     }
 
@@ -182,6 +184,10 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
 
     public float speed() {
         return speed;
+    }
+
+    public int difficulty() {
+        return difficulty;
     }
 
     public float limit() {
@@ -338,13 +344,13 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
             return;
         }
 
-        speed += dt * 0.055f;
-        if (speed > 6.5f) speed = 6.5f;
+        speed += dt * Difficulty.ACCEL[difficulty];
+        if (speed > Difficulty.MAX_SPEED[difficulty]) speed = Difficulty.MAX_SPEED[difficulty];
         if (sfx != null) sfx.setEngineSpeed(speed);
 
         float advance = speed * dt;
         metres += advance * 26f;
-        scoreF += advance * 48f;
+        scoreF += advance * 48f * Difficulty.SCORE_MULT[difficulty];
         dashOffset += advance * 0.55f;
 
         timeLeft -= dt;
@@ -366,7 +372,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
                     finish(false);
                     return;
                 }
-                scoreF += 60;
+                scoreF += 60 * Difficulty.SCORE_MULT[difficulty];
                 if (sfx != null) sfx.passed();
             }
             if (o.z < -0.05f) obstacles.remove(i);
@@ -381,7 +387,8 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         spawnCountdown -= dt * speed;
         if (spawnCountdown <= 0) {
             spawnObstacles();
-            spawnCountdown = 1.35f + rnd.nextFloat() * 0.5f;
+            spawnCountdown = Difficulty.GAP_MIN[difficulty]
+                    + rnd.nextFloat() * Difficulty.GAP_RANDOM[difficulty];
         }
 
         if (trees.size() < 16 && rnd.nextFloat() < dt * speed * 6f) {
@@ -395,7 +402,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     }
 
     private void spawnObstacles() {
-        int blocked = rnd.nextFloat() < 0.35f ? 2 : 1;
+        int blocked = rnd.nextFloat() < Difficulty.DOUBLE_CHANCE[difficulty] ? 2 : 1;
         boolean[] used = new boolean[LANES];
         for (int i = 0; i < blocked; i++) {
             int l = rnd.nextInt(LANES);
@@ -992,7 +999,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         float cxT = tacho.centerX(), cyT = tacho.centerY();
         float r = tacho.width() * 0.5f;
         float kmh = speed * 17.5f;
-        float frac = Math.min(1f, kmh / 120f);
+        float frac = Math.min(1f, kmh / 180f);
 
         p.setShader(null);
         p.setStyle(Paint.Style.FILL);
@@ -1059,6 +1066,9 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         hudLine(c, "Zeit", formatTime(timeLeft) + " / " + formatTime(limit), right, y, theme.accent);
         y += size * 1.35f;
         hudLine(c, "Strecke", (int) metres + " m", right, y, 0xFFFFFFFF);
+        y += size * 1.35f;
+        hudLine(c, "Stufe", Difficulty.label(difficulty) + " " + Difficulty.multiplierText(difficulty),
+                right, y, theme.accent2);
     }
 
     private void hudLine(Canvas c, String label, String value, float right, float y, int colour) {
