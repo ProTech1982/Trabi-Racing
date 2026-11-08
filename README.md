@@ -61,6 +61,7 @@ umgesetzt in `Updater.java`:
 | Design (Cyberpunk / DDR / Modern) | vorhanden |
 | Nach Updates suchen | vorhanden |
 | Zeitlimit 1 / 2 / 5 Minuten | vorhanden |
+| Duell gegen KI | vorhanden (sichtbarer KI-Trabi, zählt nicht für die Top 10) |
 | Schwierigkeit Einfach / Mittel / Schwer / Sehr schwer | vorhanden (`Difficulty.java`) |
 | Beenden | vorhanden |
 
@@ -74,3 +75,11 @@ Stufe bestimmt Starttempo, Beschleunigung, Höchsttempo und Hindernisdichte
 (`Difficulty.java`). Punkte werden mit ×1 / ×1,5 / ×2 / ×3 multipliziert; die
 Top 10 ist gemeinsam für alle Stufen, jeder Eintrag zeigt seine Stufe. Der Tacho
 reicht bis 180 km/h. Die Werte sind Startwerte und werden am Gerät feingetunt.
+
+### Duell gegen KI
+Menüpunkt **Duell gegen KI**: Ein zweiter Trabi (andere Farbe, Aufschrift „KI“) fährt dieselbe
+Strecke und dieselben Hindernisse. Sein Abstand zu Dir ergibt sich aus dem Tempo; jeder
+Spurwechsel bremst kurz (weniger Lenken = Vorsprung). Die Schwierigkeitsstufe bestimmt
+Reaktionszeit, Spurwechsel-Tempo und Fehlerquote der KI. Wer zuerst crasht, verliert;
+bei Zeitablauf gewinnt, wer mehr Punkte hat. Duelle werden nicht gespeichert und nicht in die
+Top 10 eingetragen. Siehe `GameView.updateRival`.

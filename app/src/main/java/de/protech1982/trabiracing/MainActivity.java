@@ -139,6 +139,7 @@ public class MainActivity extends Activity implements GameView.Listener {
         card.addView(btnLevel);
 
         card.addView(menuButton("▶  Neues Spiel", v -> startGame()));
+        card.addView(menuButton("⚔  Duell gegen KI", v -> startDuel()));
         btnResume = menuButton("Weiterfahren", v -> resumeGame());
         card.addView(btnResume);
         btnSave = menuButton("Spiel speichern", v -> saveGame());
@@ -236,7 +237,8 @@ public class MainActivity extends Activity implements GameView.Listener {
     private void showMenu(String text) {
         subtitle.setText(text);
         btnResume.setVisibility(gameStarted && !game.isOver() ? View.VISIBLE : View.GONE);
-        btnSave.setVisibility(gameStarted && !game.isOver() ? View.VISIBLE : View.GONE);
+        btnSave.setVisibility(gameStarted && !game.isOver() && !game.isDuel()
+                ? View.VISIBLE : View.GONE);
         btnLoad.setVisibility(store.hasSave() ? View.VISIBLE : View.GONE);
         btnClear.setVisibility(store.hasSave() ? View.VISIBLE : View.GONE);
         menuLayer.setVisibility(View.VISIBLE);
@@ -255,6 +257,12 @@ public class MainActivity extends Activity implements GameView.Listener {
 
     private void startGame() {
         game.newGame(store.getLimitSeconds(), store.getDifficulty());
+        gameStarted = true;
+        hideMenu();
+    }
+
+    private void startDuel() {
+        game.newGame(store.getLimitSeconds(), store.getDifficulty(), true);
         gameStarted = true;
         hideMenu();
     }
@@ -375,25 +383,35 @@ public class MainActivity extends Activity implements GameView.Listener {
 
     private void showHighscores() {
         List<Store.Entry> list = store.highscores();
-        StringBuilder sb = new StringBuilder();
+        android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder();
         if (list.isEmpty()) {
             sb.append("Noch keine Einträge.\nFahr eine Runde!");
         } else {
             for (int i = 0; i < list.size(); i++) {
                 Store.Entry e = list.get(i);
-                String lv = e.level < 0 ? "" : Difficulty.label(e.level);
-                sb.append(String.format(java.util.Locale.GERMANY, "%2d.  %-12s %,8d  %s%n",
-                        i + 1, e.name, e.score, lv));
+                sb.append(String.format(java.util.Locale.GERMANY, "%2d. %-11.11s %,8d%n",
+                        i + 1, e.name, e.score));
+                if (e.level >= 0) {
+                    int from = sb.length();
+                    sb.append("    ").append(Difficulty.label(e.level)).append("  ")
+                            .append(Difficulty.multiplierText(e.level)).append("\n");
+                    sb.setSpan(new android.text.style.ForegroundColorSpan(0xFF8E86A8), from,
+                            sb.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    sb.setSpan(new android.text.style.RelativeSizeSpan(0.82f), from,
+                            sb.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                }
             }
         }
         TextView tv = new TextView(this);
-        tv.setText(sb.toString());
+        tv.setText(sb);
         tv.setTypeface(Typeface.MONOSPACE);
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
         tv.setPadding(dp(22), dp(18), dp(22), dp(10));
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(tv);
         new AlertDialog.Builder(this)
                 .setTitle("Highscore – Top 10")
-                .setView(tv)
+                .setView(scroll)
                 .setPositiveButton("Schließen", null)
                 .show();
     }
@@ -453,7 +471,7 @@ public class MainActivity extends Activity implements GameView.Listener {
     }
 
     @Override
-    public void onGameOver(int score, int metres, boolean timeUp) {
+    public void onGameOver(int score, int metres, boolean timeUp, int duelResult) {
         music.stop();
         sfx.stopEngine();
         final int level = game.difficulty();
@@ -464,7 +482,19 @@ public class MainActivity extends Activity implements GameView.Listener {
         List<Store.Entry> list = store.highscores();
         boolean top = list.size() < 10 || score > list.get(list.size() - 1).score;
 
-        if (top && score > 0) {
+        if (duelResult != 0) {
+            String verdict = duelResult == 1 ? "🏆 Du gewinnt das Duell!"
+                    : duelResult == 2 ? "Die KI gewinnt." : "Unentschieden.";
+            new AlertDialog.Builder(this)
+                    .setTitle(verdict)
+                    .setMessage(body + "\n\nDuelle zählen nicht für die Top 10.")
+                    .setCancelable(false)
+                    .setPositiveButton("Weiter", (d, which) -> {
+                        gameStarted = false;
+                        showMenu("Hauptmenü");
+                    })
+                    .show();
+        } else if (top && score > 0) {
             EditText input = new EditText(this);
             input.setHint("Dein Name");
             input.setInputType(InputType.TYPE_CLASS_TEXT);

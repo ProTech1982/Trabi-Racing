@@ -36,6 +36,15 @@ public final class Difficulty {
     /** Wahrscheinlichkeit, dass zwei Spuren gleichzeitig blockiert sind. */
     public static final float[] DOUBLE_CHANCE = {0.20f, 0.35f, 0.45f, 0.55f};
 
+    /** KI: Reaktionszeit in Sekunden, bis sie ein Hindernis bemerkt. */
+    public static final float[] AI_REACT = {0.32f, 0.22f, 0.15f, 0.10f};
+
+    /** KI: Pause zwischen zwei Spurwechseln in Sekunden. */
+    public static final float[] AI_STEP = {0.26f, 0.19f, 0.14f, 0.11f};
+
+    /** KI: Wahrscheinlichkeit, ein Hindernis zu uebersehen. */
+    public static final float[] AI_MISTAKE = {0.12f, 0.06f, 0.025f, 0.008f};
+
     private Difficulty() {
     }
 

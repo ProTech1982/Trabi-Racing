@@ -4,6 +4,8 @@ import android.content.Context;
 import android.graphics.BlurMaskFilter;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.ColorMatrix;
+import android.graphics.ColorMatrixColorFilter;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
@@ -23,7 +25,8 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     public interface Listener {
         void onPauseRequested();
 
-        void onGameOver(int score, int metres, boolean timeUp);
+        /** duelResult: 0 = kein Duell, 1 = Sieg, 2 = Niederlage, 3 = Unentschieden. */
+        void onGameOver(int score, int metres, boolean timeUp, int duelResult);
     }
 
     private static final int LANES = 3;
@@ -35,6 +38,10 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         int lane;
         int kind;
         boolean counted;
+        float age;
+        float aiReact;
+        boolean aiBlind;
+        boolean aiDone;
     }
 
     private static class Tree {
@@ -72,6 +79,20 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     private float laneVisual = 1f;
     private float speed = 1f;
     private int difficulty = Difficulty.MEDIUM;
+
+    // Duell gegen die KI
+    private static final float AI_REL_MAX = 0.25f;
+    private static final float AI_REL_MIN = -0.05f;
+    private static final float LANE_DRAG = 0.25f;
+    private boolean duel;
+    private boolean aiAlive;
+    private int aiLane = 1;
+    private float aiLaneVisual = 1f;
+    private float aiRel;
+    private float aiScoreF;
+    private float aiNextMove;
+    private float aiDrag, playerDrag;
+    private ColorMatrixColorFilter rivalFilter, wreckFilter;
     private float metres;
     private float scoreF;
     private float timeLeft = 120f;
@@ -126,6 +147,19 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     // ---------------------------------------------------------------- Zustand
 
     public void newGame(float limitSeconds, int level) {
+        newGame(limitSeconds, level, false);
+    }
+
+    public void newGame(float limitSeconds, int level, boolean withRival) {
+        duel = withRival;
+        aiAlive = withRival;
+        aiLane = 1;
+        aiLaneVisual = 1f;
+        aiRel = 0.12f;
+        aiScoreF = 0;
+        aiNextMove = 0;
+        aiDrag = 0;
+        playerDrag = 0;
         difficulty = Difficulty.clamp(level);
         limit = limitSeconds;
         timeLeft = limitSeconds;
@@ -190,6 +224,10 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         return difficulty;
     }
 
+    public boolean isDuel() {
+        return duel;
+    }
+
     public float limit() {
         return limit;
     }
@@ -197,6 +235,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     public void moveLeft() {
         if (!paused && !over && lane > 0) {
             lane--;
+            if (duel) playerDrag = LANE_DRAG;
             if (sfx != null) sfx.laneChange();
         }
     }
@@ -204,6 +243,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     public void moveRight() {
         if (!paused && !over && lane < LANES - 1) {
             lane++;
+            if (duel) playerDrag = LANE_DRAG;
             if (sfx != null) sfx.laneChange();
         }
     }
@@ -336,6 +376,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
 
     private void update(float dt) {
         laneVisual += (lane - laneVisual) * Math.min(1f, dt * 12f);
+        aiLaneVisual += (aiLane - aiLaneVisual) * Math.min(1f, dt * 12f);
         if (shake > 0) shake = Math.max(0, shake - dt * 2.5f);
         if (flash > 0) flash = Math.max(0, flash - dt * 2f);
 
@@ -348,7 +389,8 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         if (speed > Difficulty.MAX_SPEED[difficulty]) speed = Difficulty.MAX_SPEED[difficulty];
         if (sfx != null) sfx.setEngineSpeed(speed);
 
-        float advance = speed * dt;
+        if (duel) playerDrag = Math.max(0f, playerDrag - dt * 2f);
+        float advance = speed * dt * (duel ? 1f - playerDrag : 1f);
         metres += advance * 26f;
         scoreF += advance * 48f * Difficulty.SCORE_MULT[difficulty];
         dashOffset += advance * 0.55f;
@@ -362,6 +404,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
 
         for (int i = obstacles.size() - 1; i >= 0; i--) {
             Obstacle o = obstacles.get(i);
+            o.age += dt;
             o.z -= advance * 0.30f;
             if (!o.counted && o.z < HIT_Z) {
                 o.counted = true;
@@ -383,6 +426,8 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
             t.z -= advance * 0.30f;
             if (t.z < -0.05f) trees.remove(i);
         }
+
+        if (duel) updateRival(dt, advance * 0.30f);
 
         spawnCountdown -= dt * speed;
         if (spawnCountdown <= 0) {
@@ -412,6 +457,8 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
             o.z = 1.0f;
             o.lane = l;
             o.kind = rnd.nextInt(3);
+            o.aiReact = Difficulty.AI_REACT[difficulty] * (0.7f + 0.6f * rnd.nextFloat());
+            o.aiBlind = rnd.nextFloat() < Difficulty.AI_MISTAKE[difficulty];
             obstacles.add(o);
         }
     }
@@ -421,9 +468,113 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         paused = true;
         final int s = (int) scoreF;
         final int m = (int) metres;
+        int result = 0;
+        if (duel) {
+            int ai = (int) aiScoreF;
+            if (!timeUp && aiAlive) result = 2;
+            else if (timeUp && !aiAlive) result = 1;
+            else result = s > ai ? 1 : (s < ai ? 2 : 3);
+        }
+        final int duelResult = result;
         post(() -> {
-            if (listener != null) listener.onGameOver(s, m, timeUp);
+            if (listener != null) listener.onGameOver(s, m, timeUp, duelResult);
         });
+    }
+
+    // -------------------------------------------------------------------- KI
+
+    /**
+     * Die KI faehrt auf derselben Strecke. Ihr Abstand zum Spieler ({@code aiRel},
+     * in Strecken-Einheiten) entsteht aus dem Tempo; jeder Spurwechsel bremst
+     * kurz. Hindernisse erreichen sie bei z = HIT_Z + aiRel.
+     */
+    private void updateRival(float dt, float playerTravel) {
+        if (aiAlive) {
+            aiDrag = Math.max(0f, aiDrag - dt * 2f);
+            float travel = speed * dt * (1f - aiDrag) * 0.30f;
+            float before = aiRel;
+            aiRel = Math.max(AI_REL_MIN, Math.min(AI_REL_MAX, aiRel + travel - playerTravel));
+            float effective = aiRel - before + playerTravel;
+            aiScoreF += effective / 0.30f * 48f * Difficulty.SCORE_MULT[difficulty];
+        } else {
+            aiRel -= playerTravel;
+        }
+
+        float hitZ = HIT_Z + aiRel;
+        Obstacle nearest = null;
+        for (Obstacle o : obstacles) {
+            if (o.aiDone) continue;
+            if (o.z < hitZ) {
+                o.aiDone = true;
+                if (aiAlive) {
+                    if (Math.abs(o.lane - aiLaneVisual) < 0.55f) {
+                        aiAlive = false;
+                        if (sfx != null) sfx.crash();
+                    } else {
+                        aiScoreF += 60f * Difficulty.SCORE_MULT[difficulty];
+                    }
+                }
+                continue;
+            }
+            if (nearest == null || o.z < nearest.z) nearest = o;
+        }
+        if (!aiAlive) return;
+
+        aiNextMove -= dt;
+        if (nearest == null || nearest.aiBlind || nearest.age < nearest.aiReact || aiNextMove > 0f) {
+            return;
+        }
+        boolean[] blocked = new boolean[LANES];
+        for (Obstacle o : obstacles) {
+            if (o.aiDone || o.aiBlind || o.age < o.aiReact) continue;
+            if (o.z - nearest.z < 0.15f) blocked[o.lane] = true;
+        }
+        int target = -1, best = 99;
+        for (int l = 0; l < LANES; l++) {
+            if (blocked[l]) continue;
+            int d = Math.abs(l - aiLane);
+            if (d < best) {
+                best = d;
+                target = l;
+            }
+        }
+        if (target >= 0 && target != aiLane) {
+            aiLane += target > aiLane ? 1 : -1;
+            aiNextMove = Difficulty.AI_STEP[difficulty];
+            aiDrag = LANE_DRAG;
+        }
+    }
+
+    /** Hoehe der KI auf der Strecke (z-Wert wie bei den Hindernissen). */
+    private float rivalZ() {
+        return CAR_Z + aiRel;
+    }
+
+    private void drawRival(Canvas c) {
+        float z = rivalZ();
+        if (z < -0.02f || z > 1f) return;
+        float k = scaleAt(z) / scaleAt(CAR_Z);
+        float x = laneX(aiLaneVisual, z);
+        float y = yAt(z) - h * 0.045f * k;
+        float tilt = aiAlive ? (aiLaneVisual - aiLane) * 0.20f : 0.35f;
+        if (rivalFilter == null) {
+            rivalFilter = new ColorMatrixColorFilter(new float[]{
+                    0, 0, 1, 0, 0,
+                    0, 1, 0, 0, 0,
+                    1, 0, 0, 0, 0,
+                    0, 0, 0, 0.92f, 0});
+            ColorMatrix gray = new ColorMatrix();
+            gray.setSaturation(0f);
+            wreckFilter = new ColorMatrixColorFilter(gray);
+        }
+        p.setColorFilter(aiAlive ? rivalFilter : wreckFilter);
+        drawCarShape(c, x, y, carW * k, carH * k, tilt);
+        p.setColorFilter(null);
+
+        textPaint.setTextAlign(Paint.Align.CENTER);
+        textPaint.setColor(aiAlive ? 0xFFFFC24D : 0xFFFF6B6B);
+        textPaint.setTextSize(Math.max(18f, carH * k * 0.34f));
+        c.drawText(aiAlive ? "KI" : "KI aus", x, y - carH * k * 1.45f, textPaint);
     }
 
     // ------------------------------------------------------------- Projektion
@@ -458,7 +609,10 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         drawRoad(c);
         drawRoadside(c);
         drawObstacles(c);
+        boolean rivalBehind = duel && rivalZ() < CAR_Z;
+        if (duel && !rivalBehind) drawRival(c);
         drawCar(c);
+        if (duel && rivalBehind) drawRival(c);
 
         c.restore();
 
@@ -806,10 +960,11 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     }
 
     private void drawCar(Canvas c) {
-        float x = laneX(laneVisual, CAR_Z);
-        float y = yAt(CAR_Z) - h * 0.045f;
-        float bw = carW, bh = carH;
-        float tilt = (laneVisual - lane) * 0.20f;
+        drawCarShape(c, laneX(laneVisual, CAR_Z), yAt(CAR_Z) - h * 0.045f, carW, carH,
+                (laneVisual - lane) * 0.20f);
+    }
+
+    private void drawCarShape(Canvas c, float x, float y, float bw, float bh, float tilt) {
 
         c.save();
         c.translate(x, y);
@@ -1069,6 +1224,15 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         y += size * 1.35f;
         hudLine(c, "Stufe", Difficulty.label(difficulty) + " " + Difficulty.multiplierText(difficulty),
                 right, y, theme.accent2);
+        if (duel) {
+            y += size * 1.35f;
+            int diff = (int) scoreF - (int) aiScoreF;
+            String txt = aiAlive ? formatScore((int) aiScoreF) : "ausgeschieden";
+            hudLine(c, "KI", txt, right, y, 0xFFFFC24D);
+            y += size * 1.35f;
+            hudLine(c, diff >= 0 ? "Vorsprung" : "Rückstand", formatScore(Math.abs(diff)), right, y,
+                    diff >= 0 ? 0xFF6BFF9E : 0xFFFF6B6B);
+        }
     }
 
     private void hudLine(Canvas c, String label, String value, float right, float y, int colour) {
