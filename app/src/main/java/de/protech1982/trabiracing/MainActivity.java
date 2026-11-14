@@ -2,9 +2,11 @@ package de.protech1982.trabiracing;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.text.InputType;
@@ -155,6 +157,8 @@ public class MainActivity extends Activity implements GameView.Listener {
         card.addView(btnMusic);
         btnDesign = menuButton(designLabel(), v -> chooseDesign());
         card.addView(btnDesign);
+        card.addView(menuButton("Sicherung speichern", v -> startBackup()));
+        card.addView(menuButton("Sicherung wiederherstellen", v -> confirmRestore()));
         btnUpdate = menuButton("Nach Updates suchen", v -> checkForUpdate());
         card.addView(btnUpdate);
         card.addView(menuButton("Beenden", v -> finish()));
@@ -289,6 +293,52 @@ public class MainActivity extends Activity implements GameView.Listener {
         game.restore((int) s[0], s[1], s[2], (int) s[3], s[4], store.getLimitSeconds(), (int) s[5]);
         gameStarted = true;
         showMenu("Spielstand geladen – weiterfahren?");
+    }
+
+    private static final int REQ_BACKUP = 4711;
+    private static final int REQ_RESTORE = 4712;
+
+    private void startBackup() {
+        Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType("application/json");
+        i.putExtra(Intent.EXTRA_TITLE, Backup.suggestedName());
+        startActivityForResult(i, REQ_BACKUP);
+    }
+
+    private void confirmRestore() {
+        new AlertDialog.Builder(this)
+                .setTitle("Sicherung wiederherstellen?")
+                .setMessage("Highscore, Spielstand und Einstellungen werden durch die Sicherung ersetzt.")
+                .setPositiveButton("Wiederherstellen", (d, w) -> {
+                    Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    i.addCategory(Intent.CATEGORY_OPENABLE);
+                    i.setType("*/*");
+                    startActivityForResult(i, REQ_RESTORE);
+                })
+                .setNegativeButton("Abbrechen", null)
+                .show();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) {
+            return;
+        }
+        Uri uri = data.getData();
+        try {
+            if (requestCode == REQ_BACKUP) {
+                int n = Backup.write(this, uri);
+                toast("Sicherung gespeichert (" + n + " Werte)");
+            } else if (requestCode == REQ_RESTORE) {
+                int n = Backup.restore(this, uri);
+                toast("Wiederhergestellt (" + n + " Werte)");
+                recreate();
+            }
+        } catch (Exception e) {
+            toast("Fehlgeschlagen: " + e.getMessage());
+        }
     }
 
     private void clearSave() {
