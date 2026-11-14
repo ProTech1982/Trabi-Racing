@@ -26,87 +26,47 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Keystore pruefen und vorbereiten
-        id: keystore
+      - name: Signaturschlüssel bereitstellen
         env:
           KEY_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEY_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          KS="$RUNNER_TEMP/trabi-racing.jks"
-
-          fallback() {
-            echo "::warning::$1 - es wird ersatzweise eine Debug-APK gebaut."
-            echo "signed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          }
-
-          if [ -z "$KEY_B64" ] || [ -z "$KEY_PASS" ] || [ -z "$KEY_PASSWORD" ]; then
-            echo "::warning::Keystore-Secrets unvollstaendig - es wird eine Debug-APK gebaut."
-            echo "signed=false" >> "$GITHUB_OUTPUT"
-            exit 0
+          # Ohne festen Schlüssel lässt sich kein Update über eine bestehende
+          # Installation legen. Deshalb bricht der Build bei jedem Fehler ab,
+          # statt still eine Debug-APK zu bauen.
+          if [ -z "$KEY_B64" ] || [ -z "$KEY_PASS" ] || [ -z "$KEY_ALIAS" ]; then
+            echo "::error::Signatur-Secrets fehlen (ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS)."
+            exit 1
           fi
-
-          if ! printf '%s' "$KEY_B64" | tr -d '[:space:]' | base64 --decode > "$KS" 2>/tmp/b64.txt; then
-            cat /tmp/b64.txt
-            fallback "ANDROID_KEYSTORE_BASE64 ist kein gueltiges Base64 (neu erzeugen mit: base64 -w 0 dein.jks)"
+          KS="$RUNNER_TEMP/release.keystore"
+          if ! printf '%s' "$KEY_B64" | tr -d '[:space:]' | base64 --decode > "$KS"; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 ist kein gültiges Base64."
+            exit 1
           fi
-
-          if ! keytool -J-Duser.language=en -list -keystore "$KS" -storepass "$KEY_PASS" > /tmp/ks.txt 2>&1; then
-            echo "Meldung von keytool:"
-            cat /tmp/ks.txt
-            fallback "Keystore nicht lesbar - ANDROID_KEYSTORE_PASSWORD passt nicht"
+          if ! keytool -J-Duser.language=en -list -keystore "$KS" -storepass "$KEY_PASS" > "$RUNNER_TEMP/ks.txt" 2>&1; then
+            cat "$RUNNER_TEMP/ks.txt"
+            echo "::error::Keystore nicht lesbar - ANDROID_KEYSTORE_PASSWORD passt nicht."
+            exit 1
           fi
-
-          echo "Gefundene Schluessel im Keystore:"
-          grep -i 'PrivateKeyEntry' /tmp/ks.txt || echo "(keiner)"
-
-          ALIAS="$KEY_ALIAS"
-          if [ -z "$ALIAS" ] || ! grep -qi "^$ALIAS," /tmp/ks.txt; then
-            DETECTED=$(grep -i 'PrivateKeyEntry' /tmp/ks.txt | head -1 | cut -d, -f1)
-            if [ -z "$DETECTED" ]; then
-              fallback "Im Keystore ist kein privater Schluessel enthalten"
-            fi
-            echo "::warning::ANDROID_KEY_ALIAS ('$ALIAS') passt nicht - benutze stattdessen '$DETECTED'."
-            ALIAS="$DETECTED"
+          if ! grep -qi "^$KEY_ALIAS,.*PrivateKeyEntry" "$RUNNER_TEMP/ks.txt"; then
+            echo "Gefundene Einträge:"
+            grep -i "PrivateKeyEntry" "$RUNNER_TEMP/ks.txt" | cut -d, -f1 || true
+            echo "::error::ANDROID_KEY_ALIAS passt zu keinem Schlüssel im Keystore."
+            exit 1
           fi
-
-          TYPE=$(grep -i '^Keystore type:' /tmp/ks.txt | awk '{print $NF}')
-          echo "Keystore-Typ: ${TYPE:-unbekannt}"
-
-          if [ "$TYPE" = "PKCS12" ] && [ "$KEY_PASSWORD" != "$KEY_PASS" ]; then
-            echo "::warning::PKCS12-Keystore - Schluessel- und Keystore-Passwort sind hier immer identisch. ANDROID_KEY_PASSWORD wird ignoriert."
-            KEY_PASSWORD="$KEY_PASS"
-          fi
-
-          if ! keytool -J-Duser.language=en -certreq -alias "$ALIAS" -keystore "$KS" \
-               -storepass "$KEY_PASS" -keypass "$KEY_PASSWORD" > /dev/null 2>/tmp/kp.txt; then
-            cat /tmp/kp.txt
-            if [ "$KEY_PASSWORD" != "$KEY_PASS" ]; then
-              echo "::warning::ANDROID_KEY_PASSWORD passt nicht - versuche es mit dem Keystore-Passwort."
-              KEY_PASSWORD="$KEY_PASS"
-            else
-              fallback "Schluessel '$ALIAS' laesst sich nicht entsperren"
-            fi
-          fi
-
-          echo "Keystore in Ordnung, Alias: $ALIAS"
-          echo "signed=true" >> "$GITHUB_OUTPUT"
-          echo "ANDROID_KEYSTORE_FILE=$KS" >> "$GITHUB_ENV"
-          echo "ANDROID_KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
-          echo "ANDROID_KEYSTORE_PASSWORD=$KEY_PASS" >> "$GITHUB_ENV"
-          echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "Keystore in Ordnung, Alias: $KEY_ALIAS"
+          {
+            echo "ANDROID_KEYSTORE_FILE=$KS"
+            echo "ANDROID_KEYSTORE_PASSWORD=$KEY_PASS"
+            echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
+            echo "ANDROID_KEY_PASSWORD=$KEY_PASS"
+          } >> "$GITHUB_ENV"
 
       - name: APK bauen
         env:
           APP_VERSION_CODE: ${{ github.run_number }}
-        run: |
-          if [ "${{ steps.keystore.outputs.signed }}" = "true" ]; then
-            gradle --no-daemon :app:assembleRelease
-          else
-            gradle --no-daemon :app:assembleDebug
-          fi
+        run: gradle --no-daemon :app:assembleRelease
 
       - name: APK einsammeln
         id: apk
@@ -129,10 +89,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: Trabi Racing (Build ${{ github.run_number }}, ${{ steps.keystore.outputs.signed == 'true' && 'signiert' || 'DEBUG' }})
+          name: Trabi Racing (Build ${{ github.run_number }})
           body: |
             Build ${{ github.run_number }}.
-            Signierung: ${{ steps.keystore.outputs.signed == 'true' && 'Release-Keystore' || 'DEBUG - Keystore-Secrets stimmen nicht' }}
+            Signiert mit dem gemeinsamen Release-Schlüssel.
 
             Aenderungen in diesem Build:
             ${{ steps.apk.outputs.changes }}
